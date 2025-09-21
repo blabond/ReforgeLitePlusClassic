@@ -13,5 +13,3 @@ polar: # Replace with a single Polar username
 buy_me_a_coffee: # Replace with a single Buy Me a Coffee username
 thanks_dev: # Replace with a single thanks.dev username
 custom: ["https://www.paypal.com/donate/?hosted_button_id=WWBVUA9T97EDC"]
-
-PayPal: ["https://www.paypal.com/donate/?hosted_button_id=WWBVUA9T97EDC"]
