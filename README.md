@@ -6,7 +6,7 @@ Forked off ReforgeLite Classic, maintained by **Brues1**.
 
 ---
 
-## ✨ What's different in this fork?
+## ✨ What's different in this clone?
 - **Faster calculation**
 - **3 stat values instead of 2**
 
@@ -32,4 +32,4 @@ ReforgeLite is a lightweight reforging calculator that helps you figure out the 
 
 ## 🙌 Credits
 All credits for the original work go to **Brues1** and contributors.  
-This Clone just adds small improvements for MoP Classic users.
+This clone just adds small improvements for MoP Classic users.
