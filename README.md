@@ -1,4 +1,4 @@
-# ReforgeLite Lite (MoP Classic)
+# ReforgePlusLite (MoP Classic)
 
 Continued from: [ReforgeLite Classic](https://www.curseforge.com/wow/addons/reforgelite-classic)  
 Forked off ReforgeLite Classic, maintained by **Brues1**.  
