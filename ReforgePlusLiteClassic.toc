@@ -1,8 +1,8 @@
 ## Interface: 50500
 ## Author: d07.RiV (Iroared) (Continued by Brues) (Forked and sped up by BlaBond)
-## Title: ReforgePlusLite Classic - Upgrade by Karlzen - Everlook
+## Title: ReforgeLite Plus Classic - Upgrade by Karlzen
 ## Notes: Calculates near-optimal reforging for given weights/caps.
-## Version: v0.1.0
+## Version: v0.1.1
 ## SavedVariables: ReforgePlusLiteClassicDB
 ## OptionalDeps: Ace3, LibStub, !LibUIDropDownMenu, Pawn
 ## X-Website: https://github.com/blabond/ReforgePlusLiteClassic/issues
