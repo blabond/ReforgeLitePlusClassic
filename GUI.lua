@@ -781,20 +781,28 @@ function GUI.CreateStaticPopup(name, text, options)
     hasEditBox = true,
     editBoxWidth = 350,
     OnAccept = function (self)
-      options.func(self.editBox:GetText ())
+      local editBox = self.editBox or self.EditBox
+      if editBox then
+        options.func(editBox:GetText ())
+      end
     end,
     EditBoxOnEnterPressed = function (self)
-      local importStr = self:GetParent ().editBox:GetText ()
+      local importStr = self:GetText ()
       if importStr ~= "" then
         options.func(importStr)
         self:GetParent ():Hide ()
       end
     end,
     EditBoxOnTextChanged = function (self, data)
+      local parent = self:GetParent ()
+      local primaryButton = parent and (parent.button1 or parent.Button1)
+      if not primaryButton then
+        return
+      end
       if data ~= "" then
-        self:GetParent ().button1:Enable ()
+        primaryButton:Enable ()
       else
-        self:GetParent ().button1:Disable ()
+        primaryButton:Disable ()
       end
     end,
     EditBoxOnEscapePressed = function(self)
@@ -802,13 +810,22 @@ function GUI.CreateStaticPopup(name, text, options)
     end,
     OnShow = function (self)
       LibDD:CloseDropDownMenus()
-      self.editBox:SetText ("")
-      self.button1:Disable ()
-      self.editBox:SetFocus ()
+      local editBox = self.editBox or self.EditBox
+      if editBox then
+        editBox:SetText ("")
+        editBox:SetFocus ()
+      end
+      local primaryButton = self.button1 or self.Button1
+      if primaryButton then
+        primaryButton:Disable ()
+      end
     end,
     OnHide = function (self)
       ChatEdit_FocusActiveWindow()
-      self.editBox:SetText ("")
+      local editBox = self.editBox or self.EditBox
+      if editBox then
+        editBox:SetText ("")
+      end
     end,
     timeout = 0,
     whileDead = true,

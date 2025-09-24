@@ -116,9 +116,7 @@ function ReforgeLite:ImportData(anchor)
             end
             return
         end
-
         local validPawn, pawnValues = self:ValidatePawnString(userInput)
-
         if pawnValues then
             self:ParsePawnString(pawnValues)
             widget.parent:Hide()

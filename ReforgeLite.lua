@@ -1,3 +1,83 @@
+-- The Dragonflight+ client removed GetLootMethod in favor of C_PartyInfo. Some
+-- classic-era addons (including Shadowed Unit Frames) still expect the legacy
+-- helper to exist, so provide a thin shim that emulates the historic return
+-- values when the game client no longer offers the function.
+if type(GetLootMethod) ~= "function" and C_PartyInfo and C_PartyInfo.GetLootMethod then
+  local lootMethodEnumToString
+  if Enum and Enum.LootMethod then
+    lootMethodEnumToString = {}
+    local enum = Enum.LootMethod
+    local function assign(enumKey, legacyValue)
+      if enum[enumKey] then
+        lootMethodEnumToString[enum[enumKey]] = legacyValue
+      end
+    end
+
+    assign("FreeForAll", "freeforall")
+    assign("RoundRobin", "roundrobin")
+    assign("Master", "master")
+    assign("GroupLoot", "group")
+    assign("Group", "group")
+    assign("NeedBeforeGreed", "needbeforegreed")
+    assign("Personal", "personalloot")
+    assign("PersonalLoot", "personalloot")
+
+    for key, value in pairs(enum) do
+      if type(value) == "number" and lootMethodEnumToString[value] == nil and type(key) == "string" then
+        local normalized = key:gsub("(%u)", " %1"):lower():gsub("[%s_]+", "")
+        lootMethodEnumToString[value] = normalized
+      end
+    end
+  end
+
+  local function NormalizeLootMethod(method)
+    if type(method) == "string" then
+      return method:lower()
+    end
+    if lootMethodEnumToString and lootMethodEnumToString[method] then
+      return lootMethodEnumToString[method]
+    end
+    return method
+  end
+
+  local function NormalizeLootMasterUnit(unit)
+    if unit == nil then
+      return nil, nil
+    end
+
+    if unit == "player" then
+      return 0, nil
+    end
+
+    local partyIndex = unit:match("^party(%d+)$")
+    if partyIndex then
+      return tonumber(partyIndex), nil
+    end
+
+    local raidIndex = unit:match("^raid(%d+)$")
+    if raidIndex then
+      return nil, tonumber(raidIndex)
+    end
+
+    return nil, nil
+  end
+
+  function GetLootMethod()
+    local lootMethod = C_PartyInfo.GetLootMethod()
+    if lootMethod == nil then
+      return nil
+    end
+
+    local masterUnit
+    if C_PartyInfo.GetLootMasterUnit then
+      masterUnit = C_PartyInfo.GetLootMasterUnit()
+    end
+
+    local partyIndex, raidIndex = NormalizeLootMasterUnit(masterUnit)
+    return NormalizeLootMethod(lootMethod), partyIndex, raidIndex
+  end
+end
+
 local addonName, addonTable = ...
 local addonTitle = C_AddOns.GetAddOnMetadata(addonName, "title")
 
@@ -1476,7 +1556,6 @@ function ReforgeLite:FillSettings()
 
   self.debugButton = GUI:CreatePanelButton (self.settings, L["Debug"], function(btn) self:DebugMethod () end)
   self.settings:SetCell (getOrderId('settings', self.settings), 0, self.debugButton, "LEFT")
-
   self.debugButton:Disable()
   self.debugButton:Hide()
 
@@ -1537,16 +1616,38 @@ function ReforgeLite:UpdateMethodCategory()
       self.methodStats[i].delta:SetText ("+0")
     end
 
+    self.methodReforge = GUI:CreatePanelButton (self.content, REFORGE, function(btn)
+      if not self.methodWindow then
+        self:CreateMethodWindow()
+      end
+      self:DoReforge()
+    end)
+    self.methodReforge:SetSize(114, 22)
+    self.methodReforge:SetMotionScriptsWhileDisabled(true)
+    GUI:SetTooltip(self.methodReforge, function()
+      if not ReforgeFrameIsVisible() then
+        return L["Reforging window must be open"]
+      end
+    end)
+    self.methodCategory:AddFrame (self.methodReforge)
+    self:SetAnchor (self.methodReforge, "TOPLEFT", self.methodStats, "BOTTOMLEFT", 0, -5)
+
+    self.methodCost = CreateFrame("Frame", nil, self.content, "SmallMoneyFrameTemplate")
+    MoneyFrame_SetType(self.methodCost, "REFORGE")
+    self.methodCost:Hide()
+    self.methodCategory:AddFrame(self.methodCost)
+    self:SetAnchor(self.methodCost, "TOPLEFT", self.methodReforge, "TOPRIGHT", 5, 0)
+
     self.methodShow = GUI:CreatePanelButton (self.content, SHOW, function(btn) self:ShowMethodWindow() end)
     self.methodShow:SetSize(85, 22)
     self.methodCategory:AddFrame (self.methodShow)
-    self:SetAnchor (self.methodShow, "TOPLEFT", self.methodStats, "BOTTOMLEFT", 0, -5)
+    self:SetAnchor (self.methodShow, "TOPLEFT", self.methodReforge, "BOTTOMLEFT", 0, -5)
 
     self.methodReset = GUI:CreatePanelButton (self.content, RESET, function(btn) self:ResetMethod() end)
-    self.methodReset:SetSize(85, 22)
+    self.methodReset:SetSize(114, 22)
     self.methodCategory:AddFrame (self.methodReset)
-    self:SetAnchor (self.methodReset, "BOTTOMLEFT", self.methodShow, "BOTTOMRIGHT", 8, 0)
 
+    self:SetAnchor (self.methodReset, "TOPLEFT", self.methodShow, "TOPRIGHT", 5, 0)
     self:SetAnchor (self.settingsCategory, "TOPLEFT", self.methodShow, "BOTTOMLEFT", 0, -10)
   end
 
@@ -1578,6 +1679,7 @@ function ReforgeLite:RefreshMethodStats()
       end
     end
   end
+  self:UpdateMethodChecks()
 end
 
 function ReforgeLite:UpdateContentSize ()
@@ -1788,6 +1890,7 @@ end
 
 function ReforgeLite:CreateMethodWindow()
   self.methodWindow = CreateFrame ("Frame", "ReforgeLiteMethodWindow", UIParent, "BackdropTemplate")
+  self.methodWindow:Hide()
   self.methodWindow:SetFrameStrata ("DIALOG")
   self.methodWindow:SetToplevel(true)
   self.methodWindow:ClearAllPoints ()
@@ -1847,7 +1950,6 @@ function ReforgeLite:CreateMethodWindow()
     self:SetNewTopWindow(frame)
     self:RefreshMethodWindow()
     self:RegisterQueueUpdateEvents()
-
   end)
   self.methodWindow:SetScript ("OnHide", function ()
     if self:IsShown() then
@@ -1858,7 +1960,6 @@ function ReforgeLite:CreateMethodWindow()
   end)
 
   self.methodWindow.itemTable = GUI:CreateTable (ITEM_SLOT_COUNT + 1, 3, 0, 0, nil, self.methodWindow)
-  self.methodWindow:ClearAllPoints ()
   self.methodWindow.itemTable:SetPoint ("TOPLEFT", 12, -28)
   self.methodWindow.itemTable:SetRowHeight (26)
   self.methodWindow.itemTable:SetColumnWidth (1, ITEM_SIZE)
@@ -1994,27 +2095,58 @@ local function IsReforgeMatching (slotId, reforge, override)
 end
 
 function ReforgeLite:UpdateMethodChecks ()
-  if self.methodWindow and self.pdb.method then
-    local cost = 0
-    local anyDiffer
-    for i, v in ipairs (self.methodWindow.items) do
-      local item = PLAYER_ITEM_DATA[v.slotId]
-      v.item = item:GetItemLink()
-      v.texture:SetTexture (item:GetItemIcon() or v.slotTexture)
-      local isMatching = item:IsItemEmpty() or IsReforgeMatching(v.slotId, self.pdb.method.items[i].reforge, self.methodOverride[i])
-      v.check:SetChecked(isMatching)
-      anyDiffer = anyDiffer or not isMatching
-      if not isMatching and self.pdb.method.items[i].reforge then
-        local itemCost = select (11, C_Item.GetItemInfo (v.item)) or 0
-        cost = cost + (itemCost > 0 and itemCost or 100000)
+  local method = self.pdb and self.pdb.method
+  local cost = 0
+  local anyDiffer = false
+
+  if method and self.itemData then
+    local overrides = self.methodOverride
+    for index, slotData in ipairs(self.itemData) do
+      local methodItem = method.items and method.items[index]
+      if methodItem then
+        local override = overrides and overrides[index] or 0
+        local item = PLAYER_ITEM_DATA[slotData.slotId]
+        local isMatching = item:IsItemEmpty() or IsReforgeMatching(slotData.slotId, methodItem.reforge, override)
+        if self.methodWindow and self.methodWindow.items and self.methodWindow.items[index] then
+          local windowItem = self.methodWindow.items[index]
+          windowItem.item = item:GetItemLink()
+          windowItem.texture:SetTexture(item:GetItemIcon() or windowItem.slotTexture)
+          windowItem.check:SetChecked(isMatching)
+        end
+        if not isMatching then
+          anyDiffer = true
+          if methodItem.reforge then
+            local itemLink = item:GetItemLink()
+            local itemCost = itemLink and select(11, C_Item.GetItemInfo(itemLink)) or 0
+            cost = cost + (itemCost > 0 and itemCost or 100000)
+          end
+        end
       end
     end
-    self.methodWindow.cost:SetShown(anyDiffer)
-    local enoughMoney = anyDiffer and GetMoney() >= cost
-    local canReforge = enoughMoney and ReforgeFrameIsVisible()
-    self.methodWindow.reforge:SetEnabled(canReforge)
-    SetMoneyFrameColorByFrame(self.methodWindow.cost, enoughMoney and "white" or "red")
-    MoneyFrame_Update (self.methodWindow.cost, cost)
+  end
+
+  local enoughMoney = anyDiffer and GetMoney() >= cost
+  local canReforge = anyDiffer and ReforgeFrameIsVisible() and enoughMoney
+  local reforgeInProgress = reforgeCo ~= nil
+  local canClick = canReforge or reforgeInProgress
+
+  if self.methodWindow then
+    if self.methodWindow.cost then
+      self.methodWindow.cost:SetShown(anyDiffer)
+      SetMoneyFrameColorByFrame(self.methodWindow.cost, enoughMoney and "white" or "red")
+      MoneyFrame_Update (self.methodWindow.cost, cost)
+    end
+    if self.methodWindow.reforge then
+      self.methodWindow.reforge:SetEnabled(canClick)
+    end
+  end
+  if self.methodCost then
+    self.methodCost:SetShown(anyDiffer)
+    SetMoneyFrameColorByFrame(self.methodCost, enoughMoney and "white" or "red")
+    MoneyFrame_Update(self.methodCost, cost)
+  end
+  if self.methodReforge then
+    self.methodReforge:SetEnabled(canClick)
   end
 end
 
@@ -2055,6 +2187,9 @@ function ReforgeLite:DoReforge()
     else
       ClearReforgeWindow()
       self.methodWindow.reforge:SetText (CANCEL)
+      if self.methodReforge then
+        self.methodReforge:SetText(CANCEL)
+      end
       reforgeCo = coroutine.create( function() self:DoReforgeUpdate() end )
       coroutine.resume(reforgeCo)
     end
@@ -2070,16 +2205,23 @@ function ReforgeLite:StopReforging()
   if self.methodWindow then
     self.methodWindow.reforge:SetText(REFORGE)
   end
+  if self.methodReforge then
+    self.methodReforge:SetText(REFORGE)
+  end
+  self:UpdateMethodChecks()
 end
 
 function ReforgeLite:ContinueReforge()
-  if not (self.pdb.method and self.methodWindow and self.methodWindow:IsShown() and ReforgeFrameIsVisible()) then
+  if not reforgeCo then
+    return
+  end
+
+  if not (self.pdb.method and self.methodWindow and ReforgeFrameIsVisible()) then
     self:StopReforging()
     return
   end
-  if reforgeCo then
-    coroutine.resume(reforgeCo)
-  end
+
+  coroutine.resume(reforgeCo)
 end
 
 function ReforgeLite:DoReforgeUpdate()
