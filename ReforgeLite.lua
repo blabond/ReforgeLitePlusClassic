@@ -83,6 +83,7 @@ local addonTitle = C_AddOns.GetAddOnMetadata(addonName, "title")
 
 local ReforgeLite = CreateFrame("Frame", addonName, UIParent, "BackdropTemplate")
 addonTable.ReforgeLite = ReforgeLite
+ReforgeLite.computeInProgress = false
 
 local L = addonTable.L
 local GUI = addonTable.GUI
@@ -186,6 +187,11 @@ local DefaultDB = {
 }
 
 local RFL_FRAMES = { ReforgeLite }
+function RFL_FRAMES:CloseAll()
+  for _, frame in ipairs(self) do
+    frame:Hide()
+  end
+end
 
 local function ReforgeFrameIsVisible()
   return ReforgingFrame and ReforgingFrame:IsShown()
@@ -210,12 +216,7 @@ local PLAYER_ITEM_DATA = setmetatable({}, {
 addonTable.playerData = PLAYER_ITEM_DATA
 
 local UNFORGE_INDEX = -1
-addonTable.StatCapMethods = {
-  AtLeast = 1,
-  AtMost = 2,
-  NewValue = 3,
-  Exactly = 4,
-}
+addonTable.StatCapMethods = EnumUtil.MakeEnum("AtLeast", "AtMost", "NewValue", "Exactly")
 
 function ReforgeLite:UpgradeDB()
   local db = ReforgePlusLiteClassicDB
@@ -255,9 +256,7 @@ end })
 
 local ignoredSlots = { [INVSLOT_TABARD] = true, [INVSLOT_BODY] = true }
 
-local statIds = {
-  SPIRIT = 1, DODGE = 2, PARRY = 3, HIT = 4, CRIT = 5, HASTE = 6, EXP = 7, MASTERY = 8, SPELLHIT = 9
-}
+local statIds = EnumUtil.MakeEnum("SPIRIT", "DODGE", "PARRY", "HIT", "CRIT", "HASTE", "EXP", "MASTERY", "SPELLHIT")
 addonTable.statIds = statIds
 ReforgeLite.STATS = statIds
 
@@ -1730,6 +1729,22 @@ local function GetReforgeID(slotId)
   end
 end
 
+local function GetItemUpgradeLevel(item)
+  if item:IsItemEmpty()
+  or not item:HasItemLocation()
+  or item:GetItemQuality() < Enum.ItemQuality.Rare
+  or item:GetCurrentItemLevel() < 458 then
+    return 0
+  end
+
+  local baseIlvl = C_Item.GetDetailedItemLevelInfo(item:GetItemID())
+  if not baseIlvl then
+    return 0
+  end
+
+  return (item:GetCurrentItemLevel() - baseIlvl) / 4
+end
+
 function ReforgeLite:UpdateItems()
   if not self.itemData or not self.pdb then
     return
@@ -1739,26 +1754,34 @@ function ReforgeLite:UpdateItems()
     local item = PLAYER_ITEM_DATA[v.slotId]
     local stats = {}
     local reforgeSrc, reforgeDst
+    v.itemInfo = v.itemInfo or {}
+    local info = v.itemInfo
+    wipe(info)
     if not item:IsItemEmpty() then
-      v.item = item:GetItemLink()
-      v.itemId = item:GetItemID()
-      v.ilvl = item:GetCurrentItemLevel()
-      v.itemGUID = item:GetItemGUID()
-      local upgradeLevel = 0
-      if v.ilvl and v.ilvl >= 458 then
-        upgradeLevel = addonTable.GetUpgradeIdForInventorySlot(v.slotId) or 0
-      end
-      v.upgradeLevel = upgradeLevel
+      info.link = item:GetItemLink()
+      info.itemId = item:GetItemID()
+      info.ilvl = item:GetCurrentItemLevel()
+      info.itemGUID = item:GetItemGUID()
+      info.upgradeLevel = GetItemUpgradeLevel(item)
+      info.reforge = GetReforgeID(v.slotId)
+
+      v.item = info.link
+      v.itemId = info.itemId
+      v.ilvl = info.ilvl
+      v.itemGUID = info.itemGUID
+      v.upgradeLevel = info.upgradeLevel
+      v.reforge = info.reforge
+
       v.texture:SetTexture(item:GetItemIcon())
       v.qualityColor = item:GetItemQualityColor()
       v.quality:SetVertexColor(v.qualityColor.r, v.qualityColor.g, v.qualityColor.b)
       v.quality:Show()
-      stats = GetItemStats(v.item, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = upgradeLevel })
-      v.reforge = GetReforgeID(v.slotId)
-      if v.reforge then
-        local srcId, dstId = unpack(reforgeTable[v.reforge])
+
+      stats = GetItemStats(info.link, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = info.upgradeLevel })
+      if info.reforge then
+        local srcId, dstId = unpack(reforgeTable[info.reforge])
         reforgeSrc, reforgeDst = self.itemStats[srcId].name, self.itemStats[dstId].name
-        local amount = floor ((stats[reforgeSrc] or 0) * 0.4)
+        local amount = floor ((stats[reforgeSrc] or 0) * addonTable.REFORGE_COEFF)
         stats[reforgeSrc] = (stats[reforgeSrc] or 0) - amount
         stats[reforgeDst] = (stats[reforgeDst] or 0) + amount
       end
@@ -2128,7 +2151,7 @@ function ReforgeLite:UpdateMethodChecks ()
   local enoughMoney = anyDiffer and GetMoney() >= cost
   local canReforge = anyDiffer and ReforgeFrameIsVisible() and enoughMoney
   local reforgeInProgress = reforgeCo ~= nil
-  local canClick = canReforge or reforgeInProgress
+  local canClick = (canReforge or reforgeInProgress) and not self.computeInProgress
 
   if self.methodWindow then
     if self.methodWindow.cost then
@@ -2347,20 +2370,14 @@ end
 
 function ReforgeLite:FORGE_MASTER_CLOSED()
   if self.autoOpened then
-    self:Hide()
-    if self.methodWindow then
-      self.methodWindow:Hide()
-    end
+    RFL_FRAMES:CloseAll()
     self.autoOpened = nil
   end
   self:StopReforging()
 end
 
 function ReforgeLite:PLAYER_REGEN_DISABLED()
-  if self.methodWindow then
-    self.methodWindow:Hide()
-  end
-  self:Hide()
+  RFL_FRAMES:CloseAll()
 end
 
 local currentSpec -- hack because this event likes to fire twice
@@ -2407,7 +2424,13 @@ function ReforgeLite:ADDON_LOADED (addon)
     self.pdb.caps[i].points = self.pdb.caps[i].points or {}
   end
 
-  self.conversion = {}
+  self.conversion = setmetatable({}, {
+    __index = function(t, k)
+      local value = {}
+      rawset(t, k, value)
+      return value
+    end,
+  })
 
   if self.db.updateTooltip then
     self:HookTooltipScripts()

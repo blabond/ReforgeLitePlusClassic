@@ -53,24 +53,19 @@ end
 
 function ReforgeLite:GetStatMultipliers()
   local result = {}
-  if playerRace == "HUMAN" then
-    result[addonTable.statIds.SPIRIT] = (result[addonTable.statIds.SPIRIT] or 1) * 1.03
-  end
-  for _, v in ipairs (self.itemData) do
-    if v.item then
-      local id, iLvl = addonTable.GetItemInfoUp(v.item)
-      if id and addonTable.AmplificationItems[id] then
-        local factor = 1 + 0.01 * Round(addonTable.GetRandPropPoints(iLvl, 2) / 420)
-        result[addonTable.statIds.HASTE] = (result[addonTable.statIds.HASTE] or 1) * factor
-        result[addonTable.statIds.MASTERY] = (result[addonTable.statIds.MASTERY] or 1) * factor
-        result[addonTable.statIds.SPIRIT] = (result[addonTable.statIds.SPIRIT] or 1) * factor
-      end
+  for _, v in ipairs(self.itemData) do
+    local info = v.itemInfo
+    if info and info.itemId and addonTable.AmplificationItems[info.itemId] then
+      local factor = 1 + 0.01 * Round(addonTable.GetRandPropPoints(info.ilvl, 2) / 420)
+      result[statIds.HASTE] = (result[statIds.HASTE] or 1) * factor
+      result[statIds.MASTERY] = (result[statIds.MASTERY] or 1) * factor
+      result[statIds.SPIRIT] = (result[statIds.SPIRIT] or 1) * factor
     end
   end
   return result
 end
 
-local CASTER_SPEC_WL = {}
+local CASTER_SPEC_noSpiritHit = {}
 local CASTER_SPEC = {[statIds.EXP] = {[statIds.HIT] = 1}}
 local HYBRID_SPEC = {[statIds.SPIRIT] = {[statIds.HIT] = 1}, [statIds.EXP] = {[statIds.HIT] = 1}}
 local STAT_CONVERSIONS = {
@@ -80,10 +75,13 @@ local STAT_CONVERSIONS = {
       [4] = CASTER_SPEC -- Resto
     }
   },
-  MAGE = { base = CASTER_SPEC },
+  MAGE = { base = CASTER_SPEC_noSpiritHit },
   MONK = {
     specs = {
-      [SPEC_MONK_MISTWEAVER] = {[statIds.SPIRIT] = {[statIds.HIT] = 0.5, [statIds.EXP] = 0.5}}
+      [SPEC_MONK_MISTWEAVER] = {
+        [statIds.SPIRIT] = {[statIds.HIT] = 0.5, [statIds.EXP] = 0.5},
+        [statIds.HASTE] = {[statIds.HASTE] = 0.5},
+      }
     }
   },
   PALADIN = {
@@ -103,25 +101,29 @@ local STAT_CONVERSIONS = {
       [SPEC_SHAMAN_RESTORATION] = CASTER_SPEC -- Resto
     }
   },
-  WARLOCK = { base = CASTER_SPEC_WL },
+  WARLOCK = { base = CASTER_SPEC_noSpiritHit },
 }
 
 function ReforgeLite:GetConversion()
+  wipe(self.conversion)
+
   local classConversionInfo = STAT_CONVERSIONS[playerClass]
-  if not classConversionInfo then return end
+  if classConversionInfo then
+    if classConversionInfo.base then
+      addonTable.MergeTables(self.conversion, classConversionInfo.base)
+    end
 
-  local result = {}
-
-  if classConversionInfo.base then
-    addonTable.MergeTables(result, classConversionInfo.base)
+    local spec = C_SpecializationInfo.GetSpecialization()
+    if spec and classConversionInfo.specs and classConversionInfo.specs[spec] then
+      addonTable.MergeTables(self.conversion, classConversionInfo.specs[spec])
+    end
   end
 
-  local spec = C_SpecializationInfo.GetSpecialization()
-  if spec and classConversionInfo.specs and classConversionInfo.specs[spec] then
-    addonTable.MergeTables(result, classConversionInfo.specs[spec])
+  local raceToken = playerRace
+  if raceToken and raceToken:upper() == "HUMAN" then
+    local spiritConversions = self.conversion[statIds.SPIRIT]
+    spiritConversions[statIds.SPIRIT] = (spiritConversions[statIds.SPIRIT] or 1) * 0.03
   end
-
-  self.conversion = result
 end
 
 
@@ -135,11 +137,13 @@ function ReforgeLite:UpdateMethodStats (method)
   end
   method.items = method.items or {}
   for i = 1, #self.itemData do
-    local item = self.itemData[i].item
-    local upgradeLevel = self.itemData[i].upgradeLevel or 0
+    local slotData = self.itemData[i]
+    local info = slotData.itemInfo
+    local item = info and info.link
+    local upgradeLevel = info and info.upgradeLevel or 0
     local orgstats = (item and GetItemStats(item, { upgradeLevel = upgradeLevel }) or {})
     local stats = (item and GetItemStats(item, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = upgradeLevel }) or {})
-    local reforge = self.itemData[i].reforge
+    local reforge = info and info.reforge
 
     method.items[i] = method.items[i] or {}
 
@@ -188,9 +192,10 @@ function ReforgeLite:ResetMethod ()
   local method = { items = {} }
   for i = 1, #self.itemData do
     method.items[i] = {}
-    if self.itemData[i].reforge then
-      method.items[i].reforge = self.itemData[i].reforge
-      method.items[i].src, method.items[i].dst = unpack(self.reforgeTable[self.itemData[i].reforge])
+    local info = self.itemData[i].itemInfo
+    if info and info.reforge then
+      method.items[i].reforge = info.reforge
+      method.items[i].src, method.items[i].dst = unpack(self.reforgeTable[info.reforge])
     end
   end
   self:UpdateMethodStats (method)
@@ -214,9 +219,12 @@ end
 
 function ReforgeLite:IsItemLocked (slot)
   local slotData = self.itemData[slot]
-  return not slotData.item
-  or slotData.ilvl < 200
-  or self.pdb.itemsLocked[slotData.itemGUID]
+  local info = slotData and slotData.itemInfo
+  if not info or not info.link then
+    return true
+  end
+  return (info.ilvl or 0) < 200
+  or self.pdb.itemsLocked[info.itemGUID]
 end
 
 ------------------------------------- CLASSIC REFORGE ------------------------------
@@ -269,8 +277,9 @@ end
 function ReforgeLite:GetItemReforgeOptions (item, data, slot)
   if self:IsItemLocked (slot) then
     local src, dst = nil, nil
-    if self.itemData[slot].reforge then
-      src, dst = unpack(self.reforgeTable[self.itemData[slot].reforge])
+    local info = self.itemData[slot].itemInfo
+    if info and info.reforge then
+      src, dst = unpack(self.reforgeTable[info.reforge])
     end
     return { self:MakeReforgeOption (item, data, src, dst) }
   end
@@ -305,8 +314,9 @@ function ReforgeLite:InitializeMethod()
     method.items[i] = {}
     method.items[i].stats = {}
     orgitems[i] = {}
-    local item = self.itemData[i].item
-    local upgradeLevel = self.itemData[i].upgradeLevel or 0
+    local info = self.itemData[i].itemInfo
+    local item = info and info.link
+    local upgradeLevel = info and info.upgradeLevel or 0
     local stats = (item and GetItemStats(item, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = upgradeLevel }) or {})
     local orgstats = (item and GetItemStats(item, { upgradeLevel = upgradeLevel }) or {})
     for j, v in ipairs(self.itemStats) do
@@ -369,7 +379,8 @@ function ReforgeLite:InitReforgeClassic()
     reforged[i] = 0
   end
   for i = 1, #data.method.items do
-    local reforge = self.itemData[i].reforge
+    local info = self.itemData[i].itemInfo
+    local reforge = info and info.reforge
     if reforge then
       local src, dst = unpack(self.reforgeTable[reforge])
       local amount = floor (method.items[i].stats[src] * REFORGE_COEFF)
@@ -453,7 +464,7 @@ function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
   local stateCache = {}
   local initialState = CreateZeroedArray()
   for i = 1, NUM_CAPS do
-    initialState[i] = mfloor((data.caps[i] and data.caps[i].init or 0) / data.cheat + mrandom())
+    initialState[i] = mfloor((data.caps[i] and data.caps[i].init or 0) / data.cheat + 0.5)
   end
   local initialKey = EncodeState(initialState)
   scores[initialKey] = 0
@@ -484,7 +495,7 @@ function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
         for capIndex = 1, NUM_CAPS do
           local delta = optionDeltas[capIndex]
           if delta and delta ~= 0 then
-            newState[capIndex] = newState[capIndex] + mfloor(delta / data.cheat + mrandom())
+            newState[capIndex] = newState[capIndex] + mfloor(delta / data.cheat + 0.5)
           end
         end
         local nk = EncodeState(newState)
@@ -500,6 +511,20 @@ function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
     stateCache = newStateCache
   end
   return scores, codes
+end
+
+function ReforgeLite:GetCapTarget(cap)
+  local target
+  for _, p in ipairs(cap.points or {}) do
+    if p.method == addonTable.StatCapMethods.Exactly then
+      return p.value
+    elseif p.method == addonTable.StatCapMethods.AtLeast then
+      target = math.max(target or p.value, p.value)
+    elseif p.method == addonTable.StatCapMethods.AtMost then
+      target = math.min(target or p.value, p.value)
+    end
+  end
+  return target or 0
 end
 
 function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
@@ -534,7 +559,22 @@ function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
         satisfied[capIndex] = true
       end
     end
-    local priority = 0
+do
+  local hitIndex = GetCapIndex(data.caps, statIds.HIT)
+  if hitIndex then
+    local hitCap = data.caps[hitIndex]
+    local target = self:GetCapTarget(hitCap)
+    if target and target > 0 then
+      local diff = (capValues[hitIndex] or 0) - target
+      local over  = (diff > 0) and diff or 0
+      local under = (diff < 0) and -diff or 0
+      local w = (data.weights[statIds.HIT] ~= 0) and 0.05 or 0.02
+      score = score - under * w - over * (w * 2)
+    end
+  end
+end
+
+local priority = 0
     for capIndex = 1, NUM_CAPS do
       priority = priority * 2 + (satisfied[capIndex] and 1 or 0)
     end
@@ -625,11 +665,19 @@ function ReforgeLite:RunYieldCheck(step)
 end
 
 function ReforgeLite:StartCompute()
+  self.computeInProgress = true
+  if self.UpdateMethodChecks then
+    self:UpdateMethodChecks()
+  end
   routine = coroutine.create(function() self:Compute() end)
   self:ResumeComputeNextFrame()
 end
 
 function ReforgeLite:EndCompute()
+  self.computeInProgress = false
   self.computeButton:RenderText(L["Compute"])
   addonTable.GUI:Unlock()
+  if self.UpdateMethodChecks then
+    self:UpdateMethodChecks()
+  end
 end
