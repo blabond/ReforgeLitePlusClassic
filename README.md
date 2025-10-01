@@ -9,6 +9,8 @@ Please support him and the dedicated work to maintain the main version of the ad
 ## What's different in this clone?
 - **Faster calculation**
 - **3 stat values instead of 2**
+- **Reforge butt directly without having to display it first**
+- **Show 3–6 results to choose from (option menu to change the number)**
 
 ---
 
