@@ -9,6 +9,10 @@ local playerClass, playerRace = addonTable.playerClass, addonTable.playerRace
 local statIds = addonTable.statIds
 local NUM_CAPS = addonTable.NUM_CAPS or 2
 
+local function GetMaxMethodAlternatives()
+  return addonTable.MAX_METHOD_ALTERNATIVES or 3
+end
+
 local GetItemStats = addonTable.GetItemStatsUp
 local TABLE_SIZE = 20000
 
@@ -198,9 +202,10 @@ function ReforgeLite:ResetMethod ()
       method.items[i].src, method.items[i].dst = unpack(self.reforgeTable[info.reforge])
     end
   end
+  method.isPlaceholder = true
   self:UpdateMethodStats (method)
-  self.pdb.method = method
   self.pdb.methodOrigin = addonName
+  self:SetMethodAlternatives({method}, 1)
   self:UpdateMethodCategory()
 end
 
@@ -529,8 +534,8 @@ end
 
 function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
   local maxPriority = 2 ^ NUM_CAPS
-  local bestCode = {}
-  local bestScore = {}
+  local bestPerPriority = {}
+  local maxAlternatives = GetMaxMethodAlternatives()
   for k, baseScore in pairs(scores) do
     self:RunYieldCheck()
     local code = codes[k]
@@ -559,35 +564,58 @@ function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
         satisfied[capIndex] = true
       end
     end
-do
-  local hitIndex = GetCapIndex(data.caps, statIds.HIT)
-  if hitIndex then
-    local hitCap = data.caps[hitIndex]
-    local target = self:GetCapTarget(hitCap)
-    if target and target > 0 then
-      local diff = (capValues[hitIndex] or 0) - target
-      local over  = (diff > 0) and diff or 0
-      local under = (diff < 0) and -diff or 0
-      local w = (data.weights[statIds.HIT] ~= 0) and 0.05 or 0.02
-      score = score - under * w - over * (w * 2)
+    do
+      local hitIndex = GetCapIndex(data.caps, statIds.HIT)
+      if hitIndex then
+        local hitCap = data.caps[hitIndex]
+        local target = self:GetCapTarget(hitCap)
+        if target and target > 0 then
+          local diff = (capValues[hitIndex] or 0) - target
+          local over  = (diff > 0) and diff or 0
+          local under = (diff < 0) and -diff or 0
+          local w = (data.weights[statIds.HIT] ~= 0) and 0.05 or 0.02
+          score = score - under * w - over * (w * 2)
+        end
+      end
     end
-  end
-end
 
-local priority = 0
+    local priority = 0
     for capIndex = 1, NUM_CAPS do
       priority = priority * 2 + (satisfied[capIndex] and 1 or 0)
     end
-    if not bestCode[priority] or score > bestScore[priority] then
-      bestCode[priority] = code
-      bestScore[priority] = score
+    bestPerPriority[priority] = bestPerPriority[priority] or {}
+    local bucket = bestPerPriority[priority]
+    local entry = { code = code, score = score, satisfied = CopyArray(satisfied), priority = priority }
+    local inserted = false
+    for index, existing in ipairs(bucket) do
+      if score > existing.score then
+        table.insert(bucket, index, entry)
+        inserted = true
+        break
+      end
+    end
+    if not inserted then
+      table.insert(bucket, entry)
+    end
+    
+    if #bucket > maxAlternatives then
+      table.remove(bucket)
     end
   end
+  local results = {}
   for priority = maxPriority - 1, 0, -1 do
-    if bestCode[priority] then
-      return bestCode[priority]
+    local bucket = bestPerPriority[priority]
+    if bucket then
+      for _, entry in ipairs(bucket) do
+        table.insert(results, entry)
+
+        if #results >= maxAlternatives then
+          return results
+        end
+      end
     end
   end
+  return results
 end
 
 function ReforgeLite:ComputeReforge()
@@ -603,8 +631,8 @@ function ReforgeLite:ComputeReforge()
 
   self.__chooseLoops = nil
 
-  local code = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes)
-  if not code then
+  local alternatives = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes)
+  if not alternatives or #alternatives == 0 then
     scores, codes = nil, nil
     collectgarbage("collect")
     if Print and L then
@@ -614,22 +642,39 @@ function ReforgeLite:ComputeReforge()
   end
   scores, codes = nil, nil
   collectgarbage ("collect")
-  for i = 1, #data.method.items do
-    local opt = reforgeOptions[i][code:byte(i)]
-    if data.conv[addonTable.statIds.SPIRIT] and data.conv[addonTable.statIds.SPIRIT][addonTable.statIds.HIT] == 1 then
-      if opt.dst == addonTable.statIds.HIT and data.method.items[i].stats[addonTable.statIds.SPIRIT] == 0 then
-        opt.dst = addonTable.statIds.SPIRIT
+
+  local methods = {}
+  for index, entry in ipairs(alternatives) do
+    local methodCopy = DeepCopy(data.method)
+    local code = entry.code
+    for i = 1, #methodCopy.items do
+      local opt = reforgeOptions[i][code:byte(i)]
+      if data.conv[addonTable.statIds.SPIRIT] and data.conv[addonTable.statIds.SPIRIT][addonTable.statIds.HIT] == 1 then
+        if opt.dst == addonTable.statIds.HIT and methodCopy.items[i].stats[addonTable.statIds.SPIRIT] == 0 then
+          opt.dst = addonTable.statIds.SPIRIT
+        end
       end
+      methodCopy.items[i].src = opt.src
+      methodCopy.items[i].dst = opt.dst
     end
-    data.method.items[i].src = opt.src
-    data.method.items[i].dst = opt.dst
+
+    self:FinalizeReforge ({ method = methodCopy })
+
+    methodCopy.isPlaceholder = nil
+    methodCopy.score = entry.score
+    methodCopy.priority = entry.priority
+    methodCopy.satisfied = CopyArray(entry.satisfied)
+    methodCopy.code = entry.code
+    methods[index] = methodCopy
   end
+
   self.methodDebug = { data = DeepCopy(data) }
-  self:FinalizeReforge (data)
-  self.methodDebug.method = DeepCopy(data.method)
-  if data.method then
-    self.pdb.method = data.method
+  if methods[1] then
+    self.methodDebug.method = DeepCopy(methods[1])
+  end
+  if #methods > 0 then
     self.pdb.methodOrigin = addonName
+    self:SetMethodAlternatives(methods, 1)
     self:UpdateMethodCategory ()
   end
 end

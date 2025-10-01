@@ -84,12 +84,36 @@ local addonTitle = C_AddOns.GetAddOnMetadata(addonName, "title")
 local ReforgeLite = CreateFrame("Frame", addonName, UIParent, "BackdropTemplate")
 addonTable.ReforgeLite = ReforgeLite
 ReforgeLite.computeInProgress = false
+ReforgeLite.methodAlternatives = nil
+ReforgeLite.allMethodAlternatives = nil
+ReforgeLite.selectedMethodAlternative = nil
 
 local L = addonTable.L
 local GUI = addonTable.GUI
 local LibDD = LibStub:GetLibrary("LibUIDropDownMenu-4.0")
 addonTable.MAX_LOOPS = 200000
 local MIN_LOOPS = 10000
+addonTable.MAX_METHOD_ALTERNATIVES = addonTable.MAX_METHOD_ALTERNATIVES or 3
+
+local MIN_METHOD_ALTERNATIVE_COUNT = 3
+local MAX_METHOD_ALTERNATIVE_COUNT = 6
+
+local function ClampMethodAlternativeCount(value)
+  value = tonumber(value)
+  if not value then
+    value = MIN_METHOD_ALTERNATIVE_COUNT
+  end
+  value = math.floor(value + 0.5)
+  if value < MIN_METHOD_ALTERNATIVE_COUNT then
+    return MIN_METHOD_ALTERNATIVE_COUNT
+  end
+  if value > MAX_METHOD_ALTERNATIVE_COUNT then
+    return MAX_METHOD_ALTERNATIVE_COUNT
+  end
+  return value
+end
+
+addonTable.MAX_METHOD_ALTERNATIVES = ClampMethodAlternativeCount(addonTable.MAX_METHOD_ALTERNATIVES)
 
 local DeepCopy = addonTable.DeepCopy
 local GetItemStats = addonTable.GetItemStatsUp
@@ -133,6 +157,12 @@ local ITEM_SLOTS = {
 }
 local ITEM_SLOT_COUNT = #ITEM_SLOTS
 
+local abs = math.abs
+local floor = math.floor
+
+local METHOD_ALTERNATIVE_BUTTON_HEIGHT = 60
+local METHOD_ALTERNATIVE_BUTTON_SPACING = 6
+
 local function CreateDefaultCap()
   return {
     stat = 0,
@@ -168,6 +198,7 @@ local DefaultDB = {
     inactiveWindowTitle = {0.5, 0.5, 0.5},
     specProfiles = false,
     importButton = true,
+    methodAlternativeCount = addonTable.MAX_METHOD_ALTERNATIVES,
   },
   char = {
     targetLevel = 3,
@@ -435,12 +466,12 @@ end
 
 function ReforgeLite:ApplyWoWSimsImport(newItems, attachToReforge)
   if not self.pdb.method then
-    self.pdb.method = { items = newItems }
-  else
-    self.pdb.method.items = newItems
+    self.pdb.method = { items = {} }
   end
+  self.pdb.method.items = newItems
   self.pdb.methodOrigin = addonTable.WoWSimsOriginTag
-  self:FinalizeReforge(self.pdb)
+  self:FinalizeReforge({ method = self.pdb.method })
+  self:SetMethodAlternatives({ self.pdb.method }, 1)
   self:UpdateMethodCategory()
   self:ShowMethodWindow(attachToReforge)
 end
@@ -1563,6 +1594,18 @@ function ReforgeLite:FillSettings()
   self.printLogButton:Disable()
   self.printLogButton:Hide()
 
+  local alternativeCountOrderId = getOrderId('settings', self.settings)
+  self.settings:SetCellText(alternativeCountOrderId, 0, L["Alternative results to display"], "LEFT", nil, "GameFontNormal")
+  local alternativeCountInput
+  alternativeCountInput = GUI:CreateEditBox(self.settings, 40, ITEM_SIZE, self.db.methodAlternativeCount or addonTable.MAX_METHOD_ALTERNATIVES, function(value)
+    local clamped = self:SetMethodAlternativeLimit(value)
+    if alternativeCountInput and clamped ~= value then
+      alternativeCountInput:SetText(clamped)
+    end
+  end)
+  GUI:SetTooltip(alternativeCountInput, string.format(L["Enter a number between %d and %d."], MIN_METHOD_ALTERNATIVE_COUNT, MAX_METHOD_ALTERNATIVE_COUNT))
+  self.settings:SetCell(alternativeCountOrderId, 1, alternativeCountInput, "LEFT")
+
 --[===[@debug@
   self.settings:AddRow()
   self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton(
@@ -1585,6 +1628,365 @@ function ReforgeLite:CreateImportButton()
     self.importButton.fitTextWidthPadding = 20
     self.importButton:FitToText()
     self.importButton:SetScript("OnClick", function(btn) self:ImportData(btn) end)
+  end
+end
+
+local function FormatMethodStatValue(value)
+  if type(value) ~= "number" then
+    return tostring(value or "")
+  end
+  local rounded = floor(value + 0.5)
+  if abs(value - rounded) < 0.01 then
+    return FormatLargeNumber(rounded)
+  end
+  return string.format("%.2f", value)
+end
+
+local function FormatMethodDelta(value, base)
+  local delta = value - base
+  if abs(delta) < 0.01 then
+    delta = 0
+  end
+  if delta >= 0 then
+    return string.format("+%s", FormatMethodStatValue(delta))
+  end
+  return string.format("-%s", FormatMethodStatValue(-delta))
+end
+
+function ReforgeLite:SetMethodAlternativeLimit(limit, suppressUI)
+  local clamped = ClampMethodAlternativeCount(limit)
+  addonTable.MAX_METHOD_ALTERNATIVES = clamped
+  if self.db then
+    self.db.methodAlternativeCount = clamped
+  end
+
+  if self.methodAlternativeButtons then
+    self:EnsureMethodAlternativeButtons(clamped)
+  end
+
+  if suppressUI then
+    return clamped
+  end
+
+  if self.allMethodAlternatives then
+    self:SetMethodAlternatives(self.allMethodAlternatives, self.selectedMethodAlternative)
+  else
+    self:UpdateMethodAlternativeButtons()
+  end
+
+  return clamped
+end
+
+function ReforgeLite:GetMethodAlternativeLabel(index)
+  if index == 1 then
+    return L["Best Result"]
+  end
+  return string.format(L["Alternative %d"], index - 1)
+end
+
+function ReforgeLite:SetMethodAlternatives(methods, selectedIndex)
+
+  self.allMethodAlternatives = methods or {}
+
+  local maxDisplay = addonTable.MAX_METHOD_ALTERNATIVES or #self.allMethodAlternatives
+  local display = {}
+  for index = 1, math.min(#self.allMethodAlternatives, maxDisplay) do
+    display[index] = self.allMethodAlternatives[index]
+  end
+
+  self.methodAlternatives = display
+  local count = #self.methodAlternatives
+  if count == 0 then
+    self.methodAlternativesHidden = true
+    self.selectedMethodAlternative = nil
+    self.pdb.method = nil
+    if self.methodAlternativeButtons then
+      self:UpdateMethodAlternativeButtons()
+    end
+    return
+  end
+
+  local firstSelectable
+  for index, method in ipairs(self.methodAlternatives) do
+    if method and not method.isPlaceholder then
+      firstSelectable = firstSelectable or index
+    end
+  end
+
+  if not firstSelectable then
+    self.methodAlternativesHidden = true
+    self.selectedMethodAlternative = nil
+    self.pdb.method = self.methodAlternatives[1] or nil
+    if self.methodAlternativeButtons then
+      self:UpdateMethodAlternativeButtons()
+    end
+    return
+  end
+
+  local selection = selectedIndex or self.selectedMethodAlternative or firstSelectable
+  if selection < 1 or selection > count or (self.methodAlternatives[selection] and self.methodAlternatives[selection].isPlaceholder) then
+    selection = firstSelectable
+  end
+
+  self.methodAlternativesHidden = false
+  self.selectedMethodAlternative = selection
+  self.pdb.method = self.methodAlternatives[self.selectedMethodAlternative]
+
+  if self.methodAlternativesScrollFrame and self.methodAlternativesScrollFrame.ScrollBar then
+    self.methodAlternativesScrollFrame.ScrollBar:SetValue(0)
+  end
+
+  if self.methodAlternativeButtons then
+    self:UpdateMethodAlternativeButtons()
+  end
+end
+
+function ReforgeLite:GetSelectedMethodAlternative()
+  if self.methodAlternativesHidden then
+    return nil
+  end
+  return self.selectedMethodAlternative or 1
+end
+
+function ReforgeLite:SelectMethodAlternative(index)
+  if self.methodAlternativesHidden then
+    return
+  end
+  if not self.methodAlternatives or not self.methodAlternatives[index] then
+    return
+  end
+  if self.selectedMethodAlternative == index then
+    return
+  end
+
+  self.selectedMethodAlternative = index
+  self.pdb.method = self.methodAlternatives[index]
+  GUI:ClearFocus()
+  self:RefreshMethodStats()
+  self:RefreshMethodWindow()
+  self:UpdateMethodChecks()
+  self:UpdateMethodAlternativeButtons()
+end
+
+function ReforgeLite:ShowMethodAlternativeTooltip(button)
+  if not button or not button.altIndex then
+    return
+  end
+  local method = self.methodAlternatives and self.methodAlternatives[button.altIndex]
+  if not method then
+    return
+  end
+
+  GameTooltip:SetOwner(button, "ANCHOR_LEFT")
+  GameTooltip:SetText(self:GetMethodAlternativeLabel(button.altIndex))
+
+  if method.score then
+    GameTooltip:AddLine(string.format("%s: %s", L["Score"], FormatMethodStatValue(method.score)), 0.9, 0.9, 0.9)
+  end
+
+  GameTooltip:AddLine(" ")
+  for _, stat in ipairs(self.itemStats) do
+    local value = stat.mgetter(method)
+    local current = stat.getter()
+    local delta = value - current
+    local r, g, b = 0.9, 0.9, 0.9
+    if delta > 0.01 then
+      r, g, b = 0.6, 1, 0.6
+    elseif delta < -0.01 then
+      r, g, b = 1, 0.4, 0.4
+    end
+    GameTooltip:AddDoubleLine(stat.tip, string.format("%s (%s)", FormatMethodStatValue(value), FormatMethodDelta(value, current)), 1, 1, 1, r, g, b)
+  end
+
+  if method.satisfied then
+    local missing = {}
+    for capIndex, satisfied in ipairs(method.satisfied) do
+      if satisfied == false then
+        local cap = self.pdb.caps and self.pdb.caps[capIndex]
+        local statId = cap and cap.stat
+        if statId and statId > 0 and self.itemStats[statId] then
+          missing[#missing + 1] = self.itemStats[statId].tip
+        end
+      end
+    end
+    GameTooltip:AddLine(" ")
+    if #missing > 0 then
+      GameTooltip:AddLine(string.format("%s: %s", L["Caps not met"], table.concat(missing, ", ")), 1, 0.4, 0.4)
+    else
+      GameTooltip:AddLine(L["All caps satisfied"], 0.6, 1, 0.6)
+    end
+  end
+
+  GameTooltip:Show()
+end
+
+function ReforgeLite:EnsureMethodAlternativeButtons(count)
+  if not self.methodAlternativesScrollChild then
+    return
+  end
+
+  self.methodAlternativeButtons = self.methodAlternativeButtons or {}
+
+  for index = #self.methodAlternativeButtons + 1, count do
+    local button = CreateFrame("Button", nil, self.methodAlternativesScrollChild, "BackdropTemplate")
+    button:SetHeight(METHOD_ALTERNATIVE_BUTTON_HEIGHT)
+    if index == 1 then
+      button:SetPoint("TOPLEFT")
+      button:SetPoint("TOPRIGHT")
+    else
+      button:SetPoint("TOPLEFT", self.methodAlternativeButtons[index - 1], "BOTTOMLEFT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+      button:SetPoint("TOPRIGHT", self.methodAlternativeButtons[index - 1], "BOTTOMRIGHT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+    end
+
+    button.bg = button:CreateTexture(nil, "BACKGROUND")
+    button.bg:SetAllPoints()
+    button.bg:SetColorTexture(0.08, 0.08, 0.08, 0.7)
+
+    button.selected = button:CreateTexture(nil, "BORDER")
+    button.selected:SetAllPoints()
+    button.selected:SetColorTexture(0.8, 0.6, 0, 0.25)
+    button.selected:Hide()
+
+    button.highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    button.highlight:SetAllPoints()
+    button.highlight:SetColorTexture(1, 1, 1, 0.08)
+
+    button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    button.label:SetPoint("TOPLEFT", 10, -8)
+    button.label:SetPoint("TOPRIGHT", -10, -8)
+    button.label:SetJustifyH("LEFT")
+
+    button.details = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    button.details:SetPoint("TOPLEFT", button.label, "BOTTOMLEFT", 0, -4)
+    button.details:SetPoint("TOPRIGHT", button.label, "BOTTOMRIGHT", 0, -4)
+    button.details:SetJustifyH("LEFT")
+
+    button.status = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    button.status:SetPoint("BOTTOMLEFT", 10, 8)
+    button.status:SetPoint("BOTTOMRIGHT", -10, 8)
+    button.status:SetJustifyH("LEFT")
+    button.status:SetText(" ")
+
+    button:SetScript("OnEnter", function(btn) self:ShowMethodAlternativeTooltip(btn) end)
+    button:SetScript("OnLeave", GameTooltip_Hide)
+    button:SetScript("OnClick", function(btn) self:SelectMethodAlternative(btn.altIndex) end)
+
+    self.methodAlternativeButtons[index] = button
+  end
+end
+
+function ReforgeLite:UpdateMethodAlternativeButtons()
+  if not self.methodAlternativeButtons then
+    return
+  end
+
+  if self.methodAlternativesHidden then
+    for _, button in ipairs(self.methodAlternativeButtons) do
+      button:Hide()
+      button.status:SetText(" ")
+      button.details:SetText(" ")
+      button.selected:Hide()
+    end
+
+    if self.methodAlternativesScrollChild then
+      self.methodAlternativesScrollChild:SetHeight(1)
+    end
+    if self.methodAlternativesScrollFrame and self.methodAlternativesScrollFrame.ScrollBar then
+      self.methodAlternativesScrollFrame.ScrollBar:SetValue(0)
+    end
+    if self.methodAlternativesContainer then
+      self.methodAlternativesContainer:Hide()
+    end
+    return
+  end
+
+  local methods = self.methodAlternatives or {}
+  local selected = self:GetSelectedMethodAlternative()
+  local visible = 0
+
+  local maxButtons = addonTable.MAX_METHOD_ALTERNATIVES or #self.methodAlternativeButtons
+
+  self:EnsureMethodAlternativeButtons(maxButtons)
+
+  for index, button in ipairs(self.methodAlternativeButtons) do
+    if index > maxButtons then
+      button:Hide()
+      button.altIndex = nil
+      button.status:SetText(" ")
+      button.details:SetText(" ")
+      button.selected:Hide()
+    else
+      local method = methods[index]
+      if method and method.isPlaceholder then
+        method = nil
+      end
+      button.altIndex = index
+      if method then
+        visible = visible + 1
+        button:Show()
+        button.label:SetText(self:GetMethodAlternativeLabel(index))
+        if method.score then
+          button.details:SetText(string.format("%s: %s", L["Score"], FormatMethodStatValue(method.score)))
+        else
+          button.details:SetText(" ")
+        end
+
+        local missing = {}
+        local hasSatisfiedInfo = false
+        if method.satisfied then
+          for capIndex, satisfied in ipairs(method.satisfied) do
+            hasSatisfiedInfo = true
+            if satisfied == false then
+              local cap = self.pdb.caps and self.pdb.caps[capIndex]
+              local statId = cap and cap.stat
+              if statId and statId > 0 and self.itemStats[statId] then
+                missing[#missing + 1] = self.itemStats[statId].tip
+              end
+            end
+          end
+        end
+
+        if #missing > 0 then
+          button.status:SetText(string.format("|cffff6060%s|r\n|cffffa0a0%s|r", L["Caps not met"], table.concat(missing, ", ")))
+        elseif hasSatisfiedInfo then
+          button.status:SetText(string.format("|cff66ff66%s|r", L["All caps satisfied"]))
+        else
+          button.status:SetText(" ")
+        end
+
+        if index == selected then
+          button.selected:Show()
+        else
+          button.selected:Hide()
+        end
+      else
+        button:Hide()
+        button.status:SetText(" ")
+        button.details:SetText(" ")
+        button.selected:Hide()
+      end
+    end
+  end
+
+  if self.methodAlternativesContainer then
+    if visible > 0 then
+      if self.methodAlternativesScrollChild then
+        local height = visible * METHOD_ALTERNATIVE_BUTTON_HEIGHT + math.max(0, visible - 1) * METHOD_ALTERNATIVE_BUTTON_SPACING
+        self.methodAlternativesScrollChild:SetHeight(math.max(height, 1))
+        if self.methodAlternativesScrollFrame and self.methodAlternativesScrollFrame.ScrollBar then
+          local containerWidth = self.methodAlternativesContainer:GetWidth() or 0
+          local scrollbarWidth = self.methodAlternativesScrollFrame.ScrollBar:GetWidth() or 16
+          self.methodAlternativesScrollChild:SetWidth(math.max(containerWidth - scrollbarWidth - 6, 1))
+          self.methodAlternativesScrollFrame:UpdateScrollChildRect()
+        end
+      end
+      self.methodAlternativesContainer:Show()
+    else
+      if self.methodAlternativesScrollChild then
+        self.methodAlternativesScrollChild:SetHeight(1)
+      end
+      self.methodAlternativesContainer:Hide()
+    end
   end
 end
 
@@ -1614,6 +2016,36 @@ function ReforgeLite:UpdateMethodCategory()
       self.methodStats[i].delta:SetTextColor (0.7, 0.7, 0.7)
       self.methodStats[i].delta:SetText ("+0")
     end
+
+    self.methodAlternativesContainer = CreateFrame("Frame", nil, self.content)
+    self.methodCategory:AddFrame(self.methodAlternativesContainer)
+    self:SetAnchor (self.methodAlternativesContainer, "TOPLEFT", self.methodStats, "TOPRIGHT", 10, 0)
+    self.methodAlternativesContainer:SetPoint("BOTTOMLEFT", self.methodStats, "BOTTOMRIGHT", 10, 0)
+    self.methodAlternativesContainer:SetWidth(170)
+    self.methodAlternativesContainer:Hide()
+
+    self.methodAlternativesScrollFrame = CreateFrame("ScrollFrame", nil, self.methodAlternativesContainer, "UIPanelScrollFrameTemplate")
+    self.methodAlternativesScrollFrame:SetPoint("TOPLEFT")
+    self.methodAlternativesScrollFrame:SetPoint("BOTTOMRIGHT")
+    self.methodAlternativesScrollFrame:EnableMouseWheel(true)
+    self.methodAlternativesScrollFrame:SetScript("OnMouseWheel", function(frame, delta)
+      local scrollbar = frame.ScrollBar
+      if not scrollbar then
+        return
+      end
+      local step = (scrollbar:GetHeight() or 0) / 2
+      if step <= 0 then
+        step = 20
+      end
+      scrollbar:SetValue(scrollbar:GetValue() - delta * step)
+    end)
+
+    self.methodAlternativesScrollChild = CreateFrame("Frame", nil, self.methodAlternativesScrollFrame)
+    self.methodAlternativesScrollChild:SetSize(1, 1)
+    self.methodAlternativesScrollFrame:SetScrollChild(self.methodAlternativesScrollChild)
+
+    self.methodAlternativeButtons = {}
+    self:EnsureMethodAlternativeButtons(addonTable.MAX_METHOD_ALTERNATIVES)
 
     self.methodReforge = GUI:CreatePanelButton (self.content, REFORGE, function(btn)
       if not self.methodWindow then
@@ -1649,6 +2081,12 @@ function ReforgeLite:UpdateMethodCategory()
     self:SetAnchor (self.methodReset, "TOPLEFT", self.methodShow, "TOPRIGHT", 5, 0)
     self:SetAnchor (self.settingsCategory, "TOPLEFT", self.methodShow, "BOTTOMLEFT", 0, -10)
   end
+
+  if self.pdb.method and (not self.methodAlternatives or #self.methodAlternatives == 0) then
+    self:SetMethodAlternatives({self.pdb.method}, self.selectedMethodAlternative or 1)
+  end
+
+  self:UpdateMethodAlternativeButtons()
 
   self:RefreshMethodStats()
 
@@ -1963,6 +2401,10 @@ function ReforgeLite:CreateMethodWindow()
   self.methodWindow.title:RefreshText()
   self.methodWindow.title:SetPoint ("TOPLEFT", 12, self.methodWindow.title:GetHeight()-self.methodWindow.titlebar:GetHeight())
 
+  self.methodWindow.variant = self.methodWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  self.methodWindow.variant:SetPoint("TOPLEFT", self.methodWindow.title, "BOTTOMLEFT", 0, -4)
+  self.methodWindow.variant:SetText(" ")
+
   self.methodWindow.close = CreateFrame ("Button", nil, self.methodWindow, "UIPanelCloseButtonNoScripts")
   self.methodWindow.close:SetPoint ("TOPRIGHT")
   self.methodWindow.close:SetSize(28, 28)
@@ -1983,7 +2425,7 @@ function ReforgeLite:CreateMethodWindow()
   end)
 
   self.methodWindow.itemTable = GUI:CreateTable (ITEM_SLOT_COUNT + 1, 3, 0, 0, nil, self.methodWindow)
-  self.methodWindow.itemTable:SetPoint ("TOPLEFT", 12, -28)
+  self.methodWindow.itemTable:SetPoint ("TOPLEFT", self.methodWindow.variant, "BOTTOMLEFT", 0, -12)
   self.methodWindow.itemTable:SetRowHeight (26)
   self.methodWindow.itemTable:SetColumnWidth (1, ITEM_SIZE)
   self.methodWindow.itemTable:SetColumnWidth (2, ITEM_SIZE + 2)
@@ -2064,6 +2506,19 @@ end
 function ReforgeLite:RefreshMethodWindow()
   if not self.methodWindow then
     return
+  end
+  if self.methodWindow.variant then
+    local index = self:GetSelectedMethodAlternative()
+    local method = self.methodAlternatives and self.methodAlternatives[index]
+    if method then
+      local label = self:GetMethodAlternativeLabel(index)
+      if method.score then
+        label = string.format("%s (%s: %s)", label, L["Score"], FormatMethodStatValue(method.score))
+      end
+      self.methodWindow.variant:SetText(label)
+    else
+      self.methodWindow.variant:SetText(" ")
+    end
   end
   for i = 1, ITEM_SLOT_COUNT do
     self.methodOverride[i] = 0
@@ -2413,6 +2868,8 @@ function ReforgeLite:ADDON_LOADED (addon)
   self.db = db.global
   self.pdb = db.char
   self.cdb = db.class
+
+  self:SetMethodAlternativeLimit(self.db.methodAlternativeCount or addonTable.MAX_METHOD_ALTERNATIVES, true)
 
   while #self.pdb.caps > #DefaultDB.char.caps do
     tremove(self.pdb.caps)

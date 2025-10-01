@@ -13,10 +13,14 @@ L["Add cap"] = "Neues Cap"
 L["At least"] = "Mindestens"
 L["At most"] = "Maximal"
 --[[Translation missing --]]
---[[ L["Bearweave"] = ""--]] 
+--[[ L["Bearweave"] = ""--]]
 L["Best Result"] = "Bestes Resultat"
+L["Alternative %d"] = "Alternative %d"
+L["Alternative results to display"] = "Anzahl alternativer Resultate"
+L["All caps satisfied"] = "Alle Caps erfüllt"
+L["Caps not met"] = "Caps nicht erreicht"
 --[[Translation missing --]]
---[[ L["Buffs"] = ""--]] 
+--[[ L["Buffs"] = ""--]]
 L["Cap value"] = "Capwert tooltip"
 L["Click an item to lock it"] = "Klicken um einen Gegenstand zu sperren"
 L["Compute"] = "Berechnen"
@@ -33,6 +37,7 @@ L["Crit block"] = "Kritischer Block"
 --[[ L["Enter the preset name"] = ""--]] 
 L["Enter WoWSims JSON"] = "WoWSims-JSON eingeben"
 L["Enter WoWSims JSON or Pawn string"] = "WoWSims-JSON oder Pawn-String eingeben"
+L["Enter a number between %d and %d."] = "Gib eine Zahl zwischen %d und %d ein."
 L["Exactly"] = "Genau"
 L["Expertise hard cap"] = "Waffenkunde Hardcap"
 L["Expertise soft cap"] = "Waffenkunde Softcap"
