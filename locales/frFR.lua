@@ -21,7 +21,6 @@ L["Cap value"] = "Valeur du cap"
 L["Click an item to lock it"] = "Cliquez sur un objet pour le verrouiller"
 L["Compute"] = "Calculer"
 L["Crit block"] = "Blocage crit"
-L["Debug"] = "Debug"
 --[[Translation missing --]]
 --[[ L["Destination stat color"] = ""--]] 
 --[[Translation missing --]]
@@ -57,6 +56,10 @@ L["Reforging window must be open"] = "La fenêtre de retouche doit être ouverte
 L["Remove cap"] = "Enlever ce cap"
 L["Result"] = "Résultat"
 L["Score"] = "Score "
+L["Speed/Accuracy"] = "Vitesse/Précision"
+L["Extra Fast"] = "Très rapide (précision minimale)"
+L["Fast"] = "Rapide (précision réduite)"
+L["Normal"] = "Normal (précision maximale)"
 L["Show reforged stats in item tooltips"] = "Afficher les stats retouchées dans les bulles d'aide des objets"
 L["Slide to the left if the calculation slows your game too much."] = "Glissez vers la gauche si le calcul ralentit trop votre jeu."
 --[[Translation missing --]]

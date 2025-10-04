@@ -1,6 +1,11 @@
 local addonName, addonTable = ...
 local REFORGE_COEFF = addonTable.REFORGE_COEFF
 
+local abs = math.abs
+local max = math.max
+
+local EXACT_UNDER_TOLERANCE = 3
+local EXACT_OVER_TOLERANCE = 35
 local ReforgeLite = addonTable.ReforgeLite
 local L = addonTable.L
 local DeepCopy = addonTable.DeepCopy
@@ -10,11 +15,34 @@ local statIds = addonTable.statIds
 local NUM_CAPS = addonTable.NUM_CAPS or 2
 
 local function GetMaxMethodAlternatives()
-  return addonTable.MAX_METHOD_ALTERNATIVES or 3
+  return addonTable.MAX_METHOD_ALTERNATIVES or 5
 end
 
 local GetItemStats = addonTable.GetItemStatsUp
-local TABLE_SIZE = 20000
+local TABLE_SIZE = 50000
+local MAX_CORE_STATES = addonTable.MAX_CORE_STATES or 4000
+local CORE_SPEED_PRESET_MULTIPLIERS = addonTable.CORE_SPEED_PRESET_MULTIPLIERS or {
+  normal = 1,
+  fast = 0.25,
+  extra_fast = 0.045,
+}
+
+local function CountConfiguredCaps(caps)
+  local count = 0
+  if not caps then
+    return count
+  end
+  for i = 1, NUM_CAPS do
+    local cap = caps[i]
+    if cap and cap.stat and cap.stat > 0 then
+      local points = cap.points
+      if points and #points > 0 then
+        count = count + 1
+      end
+    end
+  end
+  return count
+end
 
 local function CreateZeroedArray()
   local arr = {}
@@ -51,6 +79,66 @@ local function GetCapIndex(caps, stat)
       return i
     end
   end
+end
+
+local function GetCapMismatchPenalty(cap, value, weights)
+  if not cap or not cap.stat or cap.stat == 0 then
+    return 0
+  end
+
+  local penalty = 0
+  local baseWeight = max(abs(weights[cap.stat] or 0), 1)
+  for _, point in ipairs(cap.points or {}) do
+    local targetValue = point.value or 0
+    if point.method == addonTable.StatCapMethods.Exactly then
+      if cap.forceExactAsAtLeast then
+        local deficit = targetValue - value
+        if deficit > 0 then
+          penalty = penalty + deficit * baseWeight * 5
+        end
+      else
+        local diff = value - targetValue
+        if diff > 0 then
+          if diff > EXACT_OVER_TOLERANCE then
+            penalty = penalty + (diff - EXACT_OVER_TOLERANCE) * baseWeight * 50
+          end
+          penalty = penalty + diff * baseWeight * 50
+        else
+          local deficit = -diff
+          if deficit > EXACT_UNDER_TOLERANCE then
+            penalty = penalty + (deficit - EXACT_UNDER_TOLERANCE) * baseWeight * 50
+          end
+          penalty = penalty + deficit * baseWeight * 10
+        end
+      end
+    elseif point.method == addonTable.StatCapMethods.AtLeast then
+      local deficit = targetValue - value
+      if deficit > 0 then
+        penalty = penalty + deficit * baseWeight * 5
+      end
+    elseif point.method == addonTable.StatCapMethods.AtMost then
+      local excess = value - targetValue
+      if excess > 0 then
+        penalty = penalty + excess * baseWeight * 5
+      end
+    end
+  end
+
+  return penalty
+end
+
+local function EvaluateStateHeuristic(self, data, capValues, baseScore)
+  local heuristic = baseScore
+  for capIndex = 1, NUM_CAPS do
+    local cap = data.caps[capIndex]
+    local stat = cap and cap.stat
+    if stat and stat > 0 then
+      local value = capValues[capIndex] or 0
+      heuristic = heuristic + self:GetCapScore(cap, value)
+      heuristic = heuristic - GetCapMismatchPenalty(cap, value, data.weights)
+    end
+  end
+  return heuristic
 end
 
 ---------------------------------------------------------------------------------------
@@ -109,7 +197,7 @@ local STAT_CONVERSIONS = {
 }
 
 function ReforgeLite:GetConversion()
-  wipe(self.conversion)
+  self.conversion = wipe(self.conversion or {})
 
   local classConversionInfo = STAT_CONVERSIONS[playerClass]
   if classConversionInfo then
@@ -125,8 +213,8 @@ function ReforgeLite:GetConversion()
 
   local raceToken = playerRace
   if raceToken and raceToken:upper() == "HUMAN" then
-    local spiritConversions = self.conversion[statIds.SPIRIT]
-    spiritConversions[statIds.SPIRIT] = (spiritConversions[statIds.SPIRIT] or 1) * 0.03
+    self.conversion[statIds.SPIRIT] = self.conversion[statIds.SPIRIT] or {}
+    self.conversion[statIds.SPIRIT][statIds.SPIRIT] = (self.conversion[statIds.SPIRIT][statIds.SPIRIT] or 1) * 0.03
   end
 end
 
@@ -143,10 +231,8 @@ function ReforgeLite:UpdateMethodStats (method)
   for i = 1, #self.itemData do
     local slotData = self.itemData[i]
     local info = slotData.itemInfo
-    local item = info and info.link
-    local upgradeLevel = info and info.upgradeLevel or 0
-    local orgstats = (item and GetItemStats(item, { upgradeLevel = upgradeLevel }) or {})
-    local stats = (item and GetItemStats(item, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = upgradeLevel }) or {})
+    local orgstats = info and GetItemStats(info) or {}
+    local stats = info and GetItemStats(info, { ilvlCap = self.pdb.ilvlCap }) or {}
     local reforge = info and info.reforge
 
     method.items[i] = method.items[i] or {}
@@ -215,8 +301,19 @@ function ReforgeLite:CapAllows (cap, value)
       return false
     elseif v.method == addonTable.StatCapMethods.AtMost and value > v.value then
       return false
-    elseif v.method == addonTable.StatCapMethods.Exactly and value ~= v.value then
-      return false
+    elseif v.method == addonTable.StatCapMethods.Exactly then
+      if cap.forceExactAsAtLeast then
+        if value < v.value then
+          return false
+        end
+      else
+        if value > (v.value + EXACT_OVER_TOLERANCE) + 0.5 then
+          return false
+        end
+        if value < (v.value - EXACT_UNDER_TOLERANCE) - 0.5 then
+          return false
+        end
+      end
     end
   end
   return true
@@ -320,10 +417,8 @@ function ReforgeLite:InitializeMethod()
     method.items[i].stats = {}
     orgitems[i] = {}
     local info = self.itemData[i].itemInfo
-    local item = info and info.link
-    local upgradeLevel = info and info.upgradeLevel or 0
-    local stats = (item and GetItemStats(item, { ilvlCap = self.pdb.ilvlCap, upgradeLevel = upgradeLevel }) or {})
-    local orgstats = (item and GetItemStats(item, { upgradeLevel = upgradeLevel }) or {})
+    local stats = info and GetItemStats(info, { ilvlCap = self.pdb.ilvlCap }) or {}
+    local orgstats = info and GetItemStats(info) or {}
     for j, v in ipairs(self.itemStats) do
       method.items[i].stats[j] = (stats[v.name] or 0)
       orgitems[i][j] = (orgstats[v.name] or 0)
@@ -458,18 +553,32 @@ function ReforgeLite:InitReforgeClassic()
     end
   end
 
+  local configuredCaps = CountConfiguredCaps(data.caps)
+  local overrideStates = addonTable.MAX_CORE_STATES
+  if overrideStates ~= nil then
+    MAX_CORE_STATES = overrideStates
+  else
+    local baseStates
+    if configuredCaps >= 3 then
+      baseStates = 90000
+    else
+      baseStates = 125000
+    end
+    local preset = addonTable.CORE_SPEED_PRESET or "normal"
+    local multiplier = CORE_SPEED_PRESET_MULTIPLIERS[preset] or 1
+    MAX_CORE_STATES = math.floor(baseStates * multiplier + 0.5)
+  end
+
   return data
 end
 
 function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
   local scores, codes = {}, {}
-  local mfloor = math.floor
-  local mrandom = math.random
   local schar = string.char
   local stateCache = {}
   local initialState = CreateZeroedArray()
   for i = 1, NUM_CAPS do
-    initialState[i] = mfloor((data.caps[i] and data.caps[i].init or 0) / data.cheat + 0.5)
+    initialState[i] = Round(data.caps[i] and data.caps[i].init or 0)
   end
   local initialKey = EncodeState(initialState)
   scores[initialKey] = 0
@@ -479,6 +588,7 @@ function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
   for i = 1, #self.itemData do
     local newscores, newcodes = {}, {}
     local newStateCache = {}
+    local newHeuristic = {}
     local opt = reforgeOptions[i]
     local optionCount = 0
     if opt then
@@ -500,18 +610,48 @@ function ReforgeLite:ComputeReforgeCore (data, reforgeOptions)
         for capIndex = 1, NUM_CAPS do
           local delta = optionDeltas[capIndex]
           if delta and delta ~= 0 then
-            newState[capIndex] = newState[capIndex] + mfloor(delta / data.cheat + 0.5)
+            newState[capIndex] = Round((newState[capIndex] or 0) + delta)
           end
         end
         local nk = EncodeState(newState)
-        if newscores[nk] == nil or nscore > newscores[nk] then
+        local heuristicScore = EvaluateStateHeuristic(self, data, newState, nscore)
+        local existingHeuristic = newHeuristic[nk]
+        if existingHeuristic == nil or heuristicScore > existingHeuristic or (heuristicScore == existingHeuristic and nscore > (newscores[nk] or -math.huge)) then
           newscores[nk] = nscore
           newcodes[nk] = code .. schar(j)
           newStateCache[nk] = newState
+          newHeuristic[nk] = heuristicScore
         end
       end
       runYieldCheck(self, optionCount)
     end
+
+    if MAX_CORE_STATES and MAX_CORE_STATES > 0 then
+      local count = 0
+      for _ in pairs(newscores) do
+        count = count + 1
+      end
+      if count > MAX_CORE_STATES then
+        local ordered = {}
+        for key, heuristicScore in pairs(newHeuristic) do
+          ordered[#ordered + 1] = { key = key, heuristic = heuristicScore, score = newscores[key] or -math.huge }
+        end
+        table.sort(ordered, function(a, b)
+          if a.heuristic ~= b.heuristic then
+            return a.heuristic > b.heuristic
+          end
+          return a.score > b.score
+        end)
+        for index = MAX_CORE_STATES + 1, #ordered do
+          local key = ordered[index].key
+          newscores[key] = nil
+          newcodes[key] = nil
+          newStateCache[key] = nil
+          newHeuristic[key] = nil
+        end
+      end
+    end
+
     scores, codes = newscores, newcodes
     stateCache = newStateCache
   end
@@ -532,10 +672,28 @@ function ReforgeLite:GetCapTarget(cap)
   return target or 0
 end
 
-function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
+local function CollectExactCapIndices(caps)
+  local indices = {}
+  for capIndex = 1, NUM_CAPS do
+    local cap = caps[capIndex]
+    if cap and cap.points then
+      for _, point in ipairs(cap.points) do
+        if point.method == addonTable.StatCapMethods.Exactly then
+          table.insert(indices, capIndex)
+          break
+        end
+      end
+    end
+  end
+  return indices
+end
+
+function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes, exactFallbackApplied)
   local maxPriority = 2 ^ NUM_CAPS
   local bestPerPriority = {}
   local maxAlternatives = GetMaxMethodAlternatives()
+  local exactCapIndices = CollectExactCapIndices(data.caps)
+  local anyExactSatisfied = (#exactCapIndices == 0)
   for k, baseScore in pairs(scores) do
     self:RunYieldCheck()
     local code = codes[k]
@@ -560,8 +718,21 @@ function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
         local allows = self:CapAllows(cap, value)
         satisfied[capIndex] = allows
         score = score + self:GetCapScore(cap, value)
+        score = score - GetCapMismatchPenalty(cap, value, data.weights)
       else
         satisfied[capIndex] = true
+      end
+    end
+    if #exactCapIndices > 0 and not anyExactSatisfied then
+      local entryExactSatisfied = true
+      for _, exactIndex in ipairs(exactCapIndices) do
+        if not satisfied[exactIndex] then
+          entryExactSatisfied = false
+          break
+        end
+      end
+      if entryExactSatisfied then
+        anyExactSatisfied = true
       end
     end
     do
@@ -597,10 +768,25 @@ function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes)
     if not inserted then
       table.insert(bucket, entry)
     end
-    
+
     if #bucket > maxAlternatives then
       table.remove(bucket)
     end
+  end
+  if not exactFallbackApplied and #exactCapIndices > 0 and not anyExactSatisfied then
+    local fallbackCaps = {}
+    for _, capIndex in ipairs(exactCapIndices) do
+      local cap = data.caps[capIndex]
+      if cap then
+        cap.forceExactAsAtLeast = true
+        table.insert(fallbackCaps, cap)
+      end
+    end
+    local results = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes, true)
+    for _, cap in ipairs(fallbackCaps) do
+      cap.forceExactAsAtLeast = nil
+    end
+    return results
   end
   local results = {}
   for priority = maxPriority - 1, 0, -1 do
@@ -668,10 +854,6 @@ function ReforgeLite:ComputeReforge()
     methods[index] = methodCopy
   end
 
-  self.methodDebug = { data = DeepCopy(data) }
-  if methods[1] then
-    self.methodDebug.method = DeepCopy(methods[1])
-  end
   if #methods > 0 then
     self.pdb.methodOrigin = addonName
     self:SetMethodAlternatives(methods, 1)

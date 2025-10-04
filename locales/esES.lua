@@ -61,8 +61,12 @@ L["Reforging window must be open"] = "Ventana de reforje tiene que estar abierta
 L["Remove cap"] = "Quitar cap"
 L["Result"] = "Resultado"
 L["Score"] = "Puntuacion"
+L["Speed/Accuracy"] = "Velocidad/Precisión"
+L["Extra Fast"] = "Muy rápido (menor precisión)"
+L["Fast"] = "Rápido (precisión reducida)"
+L["Normal"] = "Normal (máxima precisión)"
 --[[Translation missing --]]
---[[ L["Show reforged stats in item tooltips"] = ""--]] 
+--[[ L["Show reforged stats in item tooltips"] = ""--]]
 L["Slide to the left if the calculation slows your game too much."] = "Deslízate hacia la izquierda si el cálculo ralentiza demasiado tu juego."
 --[[Translation missing --]]
 --[[ L["Source stat color"] = ""--]] 

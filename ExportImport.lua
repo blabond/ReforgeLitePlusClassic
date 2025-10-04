@@ -63,10 +63,6 @@ function ReforgeLite:DisplayMessage(message, name, copyOnly)
     end
 end
 
-function ReforgeLite:DebugMethod()
-    self:DisplayMessage(C_EncodingUtil.SerializeJSON(self.methodDebug or {nty="<3"}), C_AddOns.GetAddOnMetadata(addonName, "X-Website"), true)
-end
-
 function ReforgeLite:PrintLog()
     self:DisplayMessage(table.concat(addonTable.printLog, "\n"), "Print Log", true)
 end

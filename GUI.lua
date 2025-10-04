@@ -1,7 +1,17 @@
 local addonName, addonTable = ...
 local GUI = {}
 
-local LibDD = LibStub:GetLibrary("LibUIDropDownMenu-4.0")
+addonTable.FONTS = addonTable.FONTS or {
+  grey = INACTIVE_COLOR,
+  lightgrey = TUTORIAL_FONT_COLOR,
+  white = WHITE_FONT_COLOR,
+  green = CreateColor(0.6, 1, 0.6),
+  red = CreateColor(1, 0.4, 0.4),
+  panel = PANEL_BACKGROUND_COLOR,
+  gold = GOLD_FONT_COLOR,
+  darkyellow = DARKYELLOW_FONT_COLOR,
+  disabled = DISABLED_FONT_COLOR,
+}
 
 GUI.widgetCount = 0
 function GUI:GenerateWidgetName ()
@@ -9,16 +19,39 @@ function GUI:GenerateWidgetName ()
   return addonName .. "Widget" .. self.widgetCount
 end
 GUI.defaultParent = nil
+GUI.helpButtons = {}
+GUI.helpButtonsShown = true
+
+function GUI:CreateHelpButton(parent, tooltip, opts)
+  opts = opts or {}
+  local btn = CreateFrame("Button", nil, parent, "MainHelpPlateButton")
+  btn:SetFrameLevel(btn:GetParent():GetFrameLevel() + 1)
+  btn:SetScale(opts.scale or 0.6)
+  self:SetTooltip(btn, tooltip)
+  tinsert(self.helpButtons, btn)
+  if not self.helpButtonsShown then
+    btn:Hide()
+  end
+  return btn
+end
+
+function GUI:SetHelpButtonsShown(shown)
+  self.helpButtonsShown = shown and true or false
+  for _, btn in ipairs(self.helpButtons) do
+    btn:SetShown(shown)
+  end
+end
 
 function GUI:ClearEditFocus()
-  LibDD:CloseDropDownMenus()
+  if MenuUtil and MenuUtil.CloseMenu then
+    MenuUtil.CloseMenu()
+  end
   for _,v in ipairs(self.editBoxes) do
     v:ClearFocus()
   end
 end
 
 function GUI:ClearFocus()
-  LibDD:CloseDropDownMenus()
   self:ClearEditFocus()
 end
 
@@ -43,8 +76,14 @@ function GUI:Lock()
     end
   end
   for _, dropdown in pairs(self.dropdowns) do
-    if not dropdown.isDisabled then
-      dropdown:DisableDropdown()
+    if dropdown:IsEnabled() then
+      dropdown:SetEnabled(false)
+      dropdown.locked = true
+    end
+  end
+  for _, dropdown in pairs(self.filterDropdowns or {}) do
+    if dropdown:IsEnabled() and not dropdown.preventLock then
+      dropdown:SetEnabled(false)
       dropdown.locked = true
     end
   end
@@ -72,7 +111,13 @@ function GUI:Unlock()
   end
   for _, dropdown in pairs(self.dropdowns) do
     if dropdown.locked then
-      dropdown:EnableDropdown()
+      dropdown:SetEnabled(true)
+      dropdown.locked = nil
+    end
+  end
+  for _, dropdown in pairs(self.filterDropdowns or {}) do
+    if dropdown.locked then
+      dropdown:SetEnabled(true)
       dropdown.locked = nil
     end
   end
@@ -109,13 +154,18 @@ end
 
 GUI.editBoxes = {}
 GUI.unusedEditBoxes = {}
-function GUI:CreateEditBox (parent, width, height, default, setter)
+function GUI:CreateEditBox (parent, width, height, default, setter, opts)
+  opts = opts or {}
   local box
   if #self.unusedEditBoxes > 0 then
     box = tremove (self.unusedEditBoxes)
     box:SetParent (parent)
     box:Show ()
-    box:SetTextColor (1, 1, 1)
+    if addonTable.FONTS and addonTable.FONTS.white then
+      box:SetTextColor(addonTable.FONTS.white:GetRGB())
+    else
+      box:SetTextColor (1, 1, 1)
+    end
     box:EnableMouse (true)
     self.editBoxes[box:GetName()] = box
   else
@@ -123,20 +173,22 @@ function GUI:CreateEditBox (parent, width, height, default, setter)
     self.editBoxes[box:GetName()] = box
     box:SetAutoFocus (false)
     box:SetFontObject (ChatFontNormal)
+    if addonTable.FONTS and addonTable.FONTS.white then
+      box:SetTextColor(addonTable.FONTS.white:GetRGB())
+    else
+      box:SetTextColor (1, 1, 1)
+    end
     box:SetNumeric ()
     box:SetTextInsets (0, 0, 3, 3)
     box:SetMaxLetters (8)
-    box:SetScript ("OnEnterPressed", box.ClearFocus)
-    box:SetScript ("OnEditFocusGained", function(frame)
-      LibDD:CloseDropDownMenus()
-      frame.prevValue = tonumber(frame:GetText())
-      frame:HighlightText()
-    end)
     box.Recycle = function (box)
       box:Hide ()
       box:SetScript ("OnEditFocusLost", nil)
+      box:SetScript ("OnEditFocusGained", nil)
+      box:SetScript ("OnEnterPressed", nil)
       box:SetScript ("OnEnter", nil)
       box:SetScript ("OnLeave", nil)
+      box:SetScript ("OnTabPressed", nil)
       self.editBoxes[box:GetName()] = nil
       tinsert (self.unusedEditBoxes, box)
     end
@@ -148,6 +200,11 @@ function GUI:CreateEditBox (parent, width, height, default, setter)
     box:SetHeight (height)
   end
   box:SetText (default)
+  box:SetScript ("OnEnterPressed", box.ClearFocus)
+  box:SetScript ("OnEditFocusGained", function(frame)
+    frame.prevValue = tonumber(frame:GetText())
+    frame:HighlightText()
+  end)
   box:SetScript ("OnEditFocusLost", function (frame)
     local value = tonumber(frame:GetText())
     if not value then
@@ -159,73 +216,107 @@ function GUI:CreateEditBox (parent, width, height, default, setter)
     end
     frame.prevValue = nil
   end)
+  box:SetScript ("OnTabPressed", opts.OnTabPressed)
   return box
 end
 
 
 GUI.dropdowns = {}
 GUI.unusedDropdowns = {}
+GUI.filterDropdowns = {}
+GUI.unusedFilterDropdowns = {}
+
+function GUI:CreateFilterDropdown (parent, text, options)
+  options = options or {}
+  local dropdown
+  if #self.unusedFilterDropdowns > 0 then
+    dropdown = tremove(self.unusedFilterDropdowns)
+    dropdown:SetParent(parent)
+    dropdown:Show()
+    dropdown:SetEnabled(true)
+    if dropdown.originalResizeToTextPadding then
+      dropdown.resizeToTextPadding = dropdown.originalResizeToTextPadding
+      dropdown.originalResizeToTextPadding = nil
+    end
+    self.filterDropdowns[dropdown:GetName()] = dropdown
+  else
+    local name = self:GenerateWidgetName()
+    dropdown = CreateFrame("DropdownButton", name, parent, "WowStyle1FilterDropdownTemplate")
+    self.filterDropdowns[name] = dropdown
+    dropdown.originalResizeToTextPadding = dropdown.resizeToTextPadding
+
+    dropdown.Recycle = function(frame)
+      frame:Hide()
+      frame:ClearScripts()
+      frame.originalResizeToTextPadding = frame.resizeToTextPadding
+      frame.resizeToTextPadding = nil
+      self.filterDropdowns[frame:GetName()] = nil
+      tinsert(self.unusedFilterDropdowns, frame)
+    end
+  end
+
+  if options.resizeToTextPadding then
+    dropdown.resizeToTextPadding = options.resizeToTextPadding
+  end
+  dropdown:SetText(text)
+  self:SetTooltip(dropdown, options.tooltip)
+  return dropdown
+end
+
 function GUI:CreateDropdown (parent, values, options)
+  options = options or {}
   local sel
   if #self.unusedDropdowns > 0 then
-    sel = tremove (self.unusedDropdowns)
-    sel:SetParent (parent)
-    sel:Show ()
+    sel = tremove(self.unusedDropdowns)
+    sel:SetParent(parent)
+    sel:Show()
+    sel:SetEnabled(true)
     self.dropdowns[sel:GetName()] = sel
   else
-    sel = LibDD:Create_UIDropDownMenu(self:GenerateWidgetName(), parent)
+    sel = CreateFrame("DropdownButton", self:GenerateWidgetName(), parent, "WowStyle1DropdownTemplate")
     self.dropdowns[sel:GetName()] = sel
-    LibDD:UIDropDownMenu_SetInitializeFunction(sel, function (dropdown)
-      self:ClearEditFocus()
-      for _, item in ipairs(dropdown:GetValues()) do
-        local info = LibDD:UIDropDownMenu_CreateInfo()
-        info.text = item.name
-        info.value = item.value
-        info.checked = (dropdown.value == item.value)
-        info.category = item.category
-        info.func = function (inf)
-          LibDD:UIDropDownMenu_SetSelectedValue (dropdown, inf.value)
-          if dropdown.setter then dropdown.setter (dropdown,inf.value) end
-          dropdown.value = inf.value
-        end
-        if dropdown.menuItemDisabled then
-          info.disabled = dropdown.menuItemDisabled(info.value)
-        end
-        if not dropdown.menuItemHidden or not dropdown.menuItemHidden(info) then
-          LibDD:UIDropDownMenu_AddButton(info)
-        end
+
+    if sel.Text then
+      sel.Text:ClearAllPoints()
+      sel.Text:SetPoint("RIGHT", sel.Arrow, "LEFT")
+      sel.Text:SetPoint("LEFT", sel, "LEFT", 9, 0)
+      if addonTable.FONTS and addonTable.FONTS.white then
+        sel.Text:SetTextColor(addonTable.FONTS.white:GetRGB())
+      else
+        sel.Text:SetTextColor(1, 1, 1)
       end
-    end)
-    sel.GetValues = function(frame) return GetValueOrCallFunction(frame, 'values') end
-    sel.SetValue = function (dropdown, value)
+    end
+
+    sel.GetValues = function(frame)
+      return GetValueOrCallFunction(frame, 'values')
+    end
+
+    sel.SetValue = function(dropdown, value)
       dropdown.value = value
       dropdown.selectedValue = value
-      for _, v in ipairs(dropdown:GetValues()) do
+      local list = dropdown:GetValues()
+      if not list then
+        if dropdown.Text then
+          dropdown.Text:SetText("")
+        end
+        return
+      end
+      for _, v in ipairs(list) do
         if v.value == value then
-          LibDD:UIDropDownMenu_SetText(dropdown, v.name)
+          if dropdown.Text then
+            dropdown.Text:SetText(v.name)
+          end
           return
         end
       end
-      LibDD:UIDropDownMenu_SetText(dropdown, "")
+      if dropdown.Text then
+        dropdown.Text:SetText("")
+      end
     end
-    sel.EnableDropdown = function(dropdown)
-      LibDD:UIDropDownMenu_EnableDropDown (dropdown)
-    end
-    sel.DisableDropdown = function(dropdown)
-      LibDD:UIDropDownMenu_DisableDropDown (dropdown)
-    end
-    LibDD:UIDropDownMenu_JustifyText (sel, "LEFT")
-    sel:SetHeight (50)
-    sel.Left:SetHeight(50)
-    sel.Middle:SetHeight(50)
-    sel.Right:SetHeight(50)
-    sel.Text:SetPoint ("LEFT", sel.Left, "LEFT", 27, 1)
-    sel.Button:SetSize(22, 22)
-    sel.Button:SetPoint ("TOPRIGHT", sel.Right, "TOPRIGHT", -16, -13)
-    sel.Recycle = function (frame)
-      frame:Hide ()
-      frame:SetScript ("OnEnter", nil)
-      frame:SetScript ("OnLeave", nil)
+
+    sel.Recycle = function(frame)
+      frame:Hide()
+      frame:ClearScripts()
       frame.setter = nil
       frame.value = nil
       frame.selectedName = nil
@@ -233,19 +324,54 @@ function GUI:CreateDropdown (parent, values, options)
       frame.selectedValue = nil
       frame.menuItemDisabled = nil
       frame.menuItemHidden = nil
+      frame.values = nil
+      if frame.Text then
+        frame.Text:SetText("")
+      end
       self.dropdowns[frame:GetName()] = nil
       tinsert(self.unusedDropdowns, frame)
     end
   end
+
   sel.values = values
   sel.setter = options.setter
   sel.menuItemDisabled = options.menuItemDisabled
   sel.menuItemHidden = options.menuItemHidden
 
-  LibDD:UIDropDownMenu_Initialize (sel, sel.Initialize)
-  sel:SetValue (options.default)
+  sel:SetupMenu(function(dropdown, rootDescription)
+    GUI:ClearEditFocus()
+    local list = dropdown:GetValues()
+    if not list then
+      return
+    end
+    for _, item in ipairs(list) do
+      if not (dropdown.menuItemHidden and dropdown.menuItemHidden(item)) then
+        local button = rootDescription:CreateRadio(item.name, function()
+          return dropdown.value == item.value
+        end, function()
+          local oldValue = dropdown.value
+          dropdown.value = item.value
+          dropdown.selectedValue = item.value
+          if dropdown.Text then
+            dropdown.Text:SetText(item.name)
+          end
+          if dropdown.setter then
+            dropdown.setter(dropdown, item.value, oldValue)
+          end
+        end, item.value)
+
+        if dropdown.menuItemDisabled and dropdown.menuItemDisabled(item.value) then
+          button:SetEnabled(false)
+        end
+      end
+    end
+  end)
+
+  sel:SetHeight(options.height or 20)
+  sel:SetEnabled(true)
+  sel:SetValue(options.default)
   if options.width then
-    LibDD:UIDropDownMenu_SetWidth (sel, options.width)
+    sel:SetWidth(options.width)
   end
   return sel
 end
@@ -450,6 +576,7 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
   t.rows = rows
   t.cols = cols
   t.gridColor = gridColor
+  t.autoWidthColumns = {}
   t.rowPos = {}
   t.colPos = {}
   t.rowHeight = {}
@@ -468,11 +595,7 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
       end
       self.rowHeight[n] = h
       if n == 0 and self.hlines then
-        if h == 0 then
-          self.hlines[-1]:Hide ()
-        else
-          self.hlines[-1]:Show ()
-        end
+        self.hlines[-1]:SetShown(h ~= 0)
       end
     else
       for i = 1, self.rows do
@@ -488,11 +611,7 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
       end
       self.colWidth[n] = w
       if n == 0 and self.vlines then
-        if w == 0 then
-          self.vlines[-1]:Hide ()
-        else
-          self.vlines[-1]:Show ()
-        end
+        self.vlines[-1]:SetShown(w ~= 0)
       end
     else
       for i = 1, self.cols do
@@ -500,6 +619,17 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
       end
     end
     self:OnUpdateFix ()
+  end
+  t.SetColumnAutoWidth = function (self, n, enabled)
+    if n < 0 or n > self.cols then
+      return
+    end
+    self.autoWidthColumns[n] = enabled
+  end
+  t.EnableColumnAutoWidth = function (self, ...)
+    for _, v in ipairs({...}) do
+      self:SetColumnAutoWidth(v, true)
+    end
   end
   t.AddRow = function (self, i, n)
     i = i or (self.rows + 1)
@@ -726,6 +856,49 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
     RunNextFrame(function() self:OnUpdateFix() end)
   end)
 
+  t.AutoSizeColumns = function(self, columnIndex)
+    local columnsToProcess = {}
+    if columnIndex then
+      if self.autoWidthColumns[columnIndex] then
+        columnsToProcess[columnIndex] = true
+      end
+    else
+      for index, enabled in pairs(self.autoWidthColumns) do
+        if enabled then
+          columnsToProcess[index] = true
+        end
+      end
+    end
+
+    if not next(columnsToProcess) then
+      return
+    end
+
+    local maxWidths = {}
+    for _, row in pairs(self.cells) do
+      for colIndex in pairs(columnsToProcess) do
+        local cell = row[colIndex]
+        if cell then
+          local foundWidth = 0
+          if cell.GetStringWidth then
+            foundWidth = cell:GetStringWidth()
+          elseif cell.GetWidth then
+            foundWidth = cell:GetWidth()
+          end
+          local currentMax = maxWidths[colIndex] or 0
+          if foundWidth > currentMax then
+            maxWidths[colIndex] = ceil(foundWidth) + 10
+          end
+        end
+      end
+    end
+
+    for colIndex, width in pairs(maxWidths) do
+      self.colWidth[colIndex] = width
+    end
+    self:OnUpdateFix()
+  end
+
   t.SetCell = function (self, i, j, value, align, offsX, offsY)
     align = align or "CENTER"
     self.cells[i][j] = value
@@ -733,11 +906,12 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
     self.cells[i][j].offsX = offsX
     self.cells[i][j].offsY = offsY
     self:AlignCell (i, j)
+    self:AutoSizeColumns(j)
   end
   t.textTagPool = {}
   t.SetCellText = function (self, i, j, text, align, color, font)
     align = align or "CENTER"
-    color = color or {1, 1, 1}
+    color = color or (addonTable.FONTS and addonTable.FONTS.white) or {1, 1, 1}
     font = font or "GameFontNormalSmall"
 
     if self.cells[i][j] and not self.cells[i][j].istag then
@@ -764,72 +938,99 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
       end
     end
     self.cells[i][j].istag = true
-    self.cells[i][j]:SetTextColor (unpack(color))
+    local r, g, b
+    if type(color) == "table" then
+      if type(color.GetRGB) == "function" then
+        r, g, b = color:GetRGB()
+      elseif color.r and color.g and color.b then
+        r, g, b = color.r, color.g, color.b
+      else
+        r, g, b = unpack(color)
+      end
+    elseif type(color) == "userdata" and type(color.GetRGB) == "function" then
+      r, g, b = color:GetRGB()
+    end
+    if not r then
+      r, g, b = 1, 1, 1
+    end
+    self.cells[i][j]:SetTextColor (r, g, b)
     self.cells[i][j]:SetText (text)
     self.cells[i][j].align = align
     self:AlignCell (i, j)
+    self:AutoSizeColumns(j)
   end
 
   return t
 end
 
-function GUI.CreateStaticPopup(name, text, options)
+function GUI.CreateStaticPopup(name, text, options, legacyOpts)
+  local onAccept
+  local opts
+  if type(options) == "function" then
+    onAccept = options
+    opts = legacyOpts or {}
+  else
+    opts = options or {}
+    onAccept = opts.func or opts.OnAccept
+  end
+
+  if type(onAccept) ~= "function" then
+    error("GUI.CreateStaticPopup requires an onAccept function")
+  end
+
+  local hasEditBox = opts.hasEditBox
+  if hasEditBox == nil then
+    hasEditBox = true
+  end
+
   StaticPopupDialogs[name] = {
     text = text,
-    button1 = ACCEPT,
-    button2 = CANCEL,
-    hasEditBox = true,
-    editBoxWidth = 350,
-    OnAccept = function (self)
-      local editBox = self.editBox or self.EditBox
-      if editBox then
-        options.func(editBox:GetText ())
-      end
-    end,
-    EditBoxOnEnterPressed = function (self)
-      local importStr = self:GetText ()
-      if importStr ~= "" then
-        options.func(importStr)
-        self:GetParent ():Hide ()
-      end
-    end,
-    EditBoxOnTextChanged = function (self, data)
-      local parent = self:GetParent ()
-      local primaryButton = parent and (parent.button1 or parent.Button1)
-      if not primaryButton then
-        return
-      end
-      if data ~= "" then
-        primaryButton:Enable ()
-      else
-        primaryButton:Disable ()
-      end
-    end,
-    EditBoxOnEscapePressed = function(self)
-      self:GetParent():Hide();
-    end,
-    OnShow = function (self)
-      LibDD:CloseDropDownMenus()
-      local editBox = self.editBox or self.EditBox
-      if editBox then
-        editBox:SetText ("")
-        editBox:SetFocus ()
-      end
-      local primaryButton = self.button1 or self.Button1
-      if primaryButton then
-        primaryButton:Disable ()
-      end
-    end,
-    OnHide = function (self)
-      ChatEdit_FocusActiveWindow()
-      local editBox = self.editBox or self.EditBox
-      if editBox then
-        editBox:SetText ("")
-      end
-    end,
+    button1 = opts.button1 or ACCEPT,
+    button2 = opts.button2 or CANCEL,
+    hasEditBox = hasEditBox,
+    editBoxWidth = opts.editBoxWidth or 350,
     timeout = 0,
     whileDead = true,
-    hideOnEscape = true
+    hideOnEscape = true,
+    OnAccept = function(self)
+      if hasEditBox then
+        onAccept(self:GetEditBox():GetText(), self)
+      else
+        onAccept(self)
+      end
+    end,
+    OnShow = function(self)
+      local editBox = self:GetEditBox()
+      if editBox and hasEditBox then
+        editBox:SetText("")
+        editBox:SetFocus()
+        self:GetButton1():Disable()
+      else
+        self:GetButton1():Enable()
+      end
+      self:GetButton2():Enable()
+    end,
+    OnHide = function(self)
+      ChatEdit_FocusActiveWindow()
+      local editBox = self:GetEditBox()
+      if editBox then
+        editBox:SetText("")
+      end
+    end,
+    EditBoxOnEnterPressed = function(editBox)
+      local parent = editBox:GetParent()
+      if parent:GetButton1():IsEnabled() then
+        onAccept(editBox:GetText(), parent)
+        parent:Hide()
+      end
+    end,
+    EditBoxOnTextChanged = function(editBox)
+      local parent = editBox:GetParent()
+      parent:GetButton1():SetEnabled(editBox:GetText() ~= "")
+    end,
+    EditBoxOnEscapePressed = function(editBox)
+      editBox:GetParent():Hide()
+    end,
   }
 end
 

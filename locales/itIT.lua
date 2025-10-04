@@ -85,9 +85,13 @@ L["^+(%d+) %s$"] = "^+(%d+) %s$"
 --[[Translation missing --]]
 --[[ L["Result"] = ""--]] 
 --[[Translation missing --]]
---[[ L["Score"] = ""--]] 
+--[[ L["Score"] = ""--]]
+L["Speed/Accuracy"] = "Velocità/Precisione"
+L["Extra Fast"] = "Extra veloce (precisione minima)"
+L["Fast"] = "Veloce (precisione ridotta)"
+L["Normal"] = "Normale (massima precisione)"
 --[[Translation missing --]]
---[[ L["Show reforged stats in item tooltips"] = ""--]] 
+--[[ L["Show reforged stats in item tooltips"] = ""--]]
 --[[Translation missing --]]
 --[[ L["Slide to the left if the calculation slows your game too much."] = ""--]] 
 --[[Translation missing --]]

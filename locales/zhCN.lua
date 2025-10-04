@@ -21,7 +21,6 @@ L["Cap value"] = "上限值"
 L["Click an item to lock it"] = "点击以锁定该物品"
 L["Compute"] = "计算"
 L["Crit block"] = "精确格挡"
-L["Debug"] = "调试"
 --[[Translation missing --]]
 --[[ L["Destination stat color"] = ""--]] 
 --[[Translation missing --]]
@@ -57,6 +56,10 @@ L["Reforging window must be open"] = "必须打开重铸窗口"
 L["Remove cap"] = "移除上限"
 L["Result"] = "成果"
 L["Score"] = "得分"
+L["Speed/Accuracy"] = "速度/准确度"
+L["Extra Fast"] = "极速（最低准确度）"
+L["Fast"] = "快速（准确度降低）"
+L["Normal"] = "正常（最高准确度）"
 L["Show reforged stats in item tooltips"] = "在鼠标提示中显示重铸后的属性"
 L["Slide to the left if the calculation slows your game too much."] = "如果计算导致你的游戏速度太慢，请向左滑动。"
 --[[Translation missing --]]

@@ -21,7 +21,6 @@ L["Cap value"] = "조건 값"
 L["Click an item to lock it"] = "재연마하지 않을 아이템은 클릭하세요"
 L["Compute"] = "계산"
 L["Crit block"] = "결정적 방어"
-L["Debug"] = "디버그"
 --[[Translation missing --]]
 --[[ L["Destination stat color"] = ""--]] 
 --[[Translation missing --]]
@@ -59,6 +58,10 @@ L["Reforging window must be open"] = "재연마 창이 열려 있어야 합니�
 L["Remove cap"] = "조건 삭제"
 L["Result"] = "결과"
 L["Score"] = "점수"
+L["Speed/Accuracy"] = "속도/정확도"
+L["Extra Fast"] = "매우 빠름(정확도 가장 낮음)"
+L["Fast"] = "빠름(정확도 감소)"
+L["Normal"] = "보통(정확도 최고)"
 L["Show reforged stats in item tooltips"] = "아이템 툴팁에 재연마된 능력치 표시"
 L["Slide to the left if the calculation slows your game too much."] = "계산으로 인해 게임 속도가 너무 느려지면 왼쪽으로 밉니다."
 --[[Translation missing --]]

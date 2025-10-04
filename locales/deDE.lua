@@ -45,7 +45,7 @@ L["Export"] = "Export"
 --[[Translation missing --]]
 --[[ L["Highlight reforged stats"] = ""--]] 
 L["Import"] = "Import"
-L["Import WoWSims/Pawn"] = "WoWSims/Pawn importieren"
+L["Import WoWSims/Pawn/QE"] = "WoWSims/Pawn/QE importieren"
 L["Inactive window color"] = "inaktive Fensterfarbe"
 --[[Translation missing --]]
 --[[ L["Masterfrost"] = ""--]] 
@@ -60,15 +60,23 @@ L["Open window when reforging"] = "Fenster öffnen zum Umschmieden"
 --[[Translation missing --]]
 --[[ L["Other/No food"] = ""--]] 
 --[[Translation missing --]]
---[[ L["Presets"] = ""--]] 
+--[[ L["Presets"] = ""--]]
+L["Click to load preset"] = "Klicken, um das Preset zu laden"
+L["Shift+Click to delete"] = "Shift+Klick zum Löschen"
+L["Delete preset '%s'?"] = "Preset '%s' löschen?"
 L["Reforging window must be open"] = "Umschmieden Fenster muss geöffnet sein"
 L["Remove cap"] = "Entferne Cap"
 L["Result"] = "Resultat"
 L["Score"] = "Punkte"
 L["Show reforged stats in item tooltips"] = "Zeige umgeschmiedete Werte im Gegenstandstooltip"
+L["Show help buttons"] = "Hilfeschaltflächen anzeigen"
 L["Slide to the left if the calculation slows your game too much."] = "Schieben Sie es nach links, wenn die Berechnung Ihr Spiel zu sehr verlangsamt."
+L["Speed/Accuracy"] = "Geschwindigkeit/Genauigkeit"
+L["Extra Fast"] = "Extra schnell (am ungenauesten)"
+L["Fast"] = "Schnell (reduzierte Genauigkeit)"
+L["Normal"] = "Normal (höchste Genauigkeit)"
 --[[Translation missing --]]
---[[ L["Source stat color"] = ""--]] 
+--[[ L["Source stat color"] = ""--]]
 L["Pawn successfully imported."] = "Pawn erfolgreich importiert."
 L["Spell Haste"] = "Zaubertempo"
 L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "Dieser Import enthält keine Ausrüstungsdaten! Bitte stellen Sie sicher, dass beim WoWSims-Export \"Gear\" ausgewählt ist."

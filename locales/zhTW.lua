@@ -21,7 +21,6 @@ L["Cap value"] = "上限值"
 L["Click an item to lock it"] = "點擊物品鎖定"
 L["Compute"] = "計算"
 L["Crit block"] = "致命格檔"
-L["Debug"] = "偵錯"
 --[[Translation missing --]]
 --[[ L["Destination stat color"] = ""--]] 
 --[[Translation missing --]]
@@ -57,6 +56,10 @@ L["Reforging window must be open"] = "重鑄視窗必須開啟"
 L["Remove cap"] = "移除上限"
 L["Result"] = "結果"
 L["Score"] = "分數"
+L["Speed/Accuracy"] = "速度/精準度"
+L["Extra Fast"] = "極快（最低精準度）"
+L["Fast"] = "快速（精準度降低）"
+L["Normal"] = "一般（最高精準度）"
 L["Show reforged stats in item tooltips"] = "在浮動提示資訊顯示物品重鑄狀態"
 L["Slide to the left if the calculation slows your game too much."] = "如果計算使遊戲速度減慢太多，請向左滑動。"
 --[[Translation missing --]]

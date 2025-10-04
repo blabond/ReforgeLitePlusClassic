@@ -21,7 +21,6 @@ L["Cap value"] = "Пороговое значение"
 L["Click an item to lock it"] = "Нажмите на предмет, чтобы его заблокировать"
 L["Compute"] = "Посчитать"
 L["Crit block"] = "Крит блок"
-L["Debug"] = "Отладка"
 --[[Translation missing --]]
 --[[ L["Destination stat color"] = ""--]] 
 --[[Translation missing --]]
@@ -57,6 +56,10 @@ L["Reforging window must be open"] = "Необходимо открыть окн
 L["Remove cap"] = "Удалить пороговое значение"
 L["Result"] = "Результат"
 L["Score"] = "Вес"
+L["Speed/Accuracy"] = "Скорость/Точность"
+L["Extra Fast"] = "Очень быстро (минимальная точность)"
+L["Fast"] = "Быстро (пониженная точность)"
+L["Normal"] = "Нормально (максимальная точность)"
 L["Show reforged stats in item tooltips"] = "Показывать перекованные статы в подсказках"
 L["Slide to the left if the calculation slows your game too much."] = "Сдвиньте влево, если расчет слишком сильно замедляет вашу игру."
 --[[Translation missing --]]

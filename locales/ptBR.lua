@@ -86,9 +86,13 @@ local L = addonTable.L
 --[[Translation missing --]]
 --[[ L["Result"] = ""--]] 
 --[[Translation missing --]]
---[[ L["Score"] = ""--]] 
+--[[ L["Score"] = ""--]]
+L["Speed/Accuracy"] = "Velocidade/Precisão"
+L["Extra Fast"] = "Muito rápida (menor precisão)"
+L["Fast"] = "Rápida (precisão reduzida)"
+L["Normal"] = "Normal (maior precisão)"
 --[[Translation missing --]]
---[[ L["Show reforged stats in item tooltips"] = ""--]] 
+--[[ L["Show reforged stats in item tooltips"] = ""--]]
 --[[Translation missing --]]
 --[[ L["Slide to the left if the calculation slows your game too much."] = ""--]] 
 --[[Translation missing --]]
