@@ -893,6 +893,9 @@ end
 
 function ReforgeLite:StartCompute()
   self.computeInProgress = true
+  if self.UpdateSpeedPresetRadiosEnabled then
+    self:UpdateSpeedPresetRadiosEnabled()
+  end
   if self.UpdateMethodChecks then
     self:UpdateMethodChecks()
   end
@@ -904,6 +907,9 @@ function ReforgeLite:EndCompute()
   self.computeInProgress = false
   self.computeButton:RenderText(L["Compute"])
   addonTable.GUI:Unlock()
+  if self.UpdateSpeedPresetRadiosEnabled then
+    self:UpdateSpeedPresetRadiosEnabled()
+  end
   if self.UpdateMethodChecks then
     self:UpdateMethodChecks()
   end

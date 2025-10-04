@@ -144,6 +144,7 @@ local ITEM_SLOT_COUNT = #ITEM_SLOTS
 
 local abs = math.abs
 local floor = math.floor
+local max = math.max
 
 local METHOD_ALTERNATIVE_BUTTON_HEIGHT = 32
 local METHOD_ALTERNATIVE_BUTTON_SPACING = 6
@@ -1630,54 +1631,165 @@ function ReforgeLite:GetInactiveWindows()
   return bottomWindows
 end
 
+local function GetColorRGB(color, fallbackR, fallbackG, fallbackB)
+  if color then
+    if color.GetRGB then
+      return color:GetRGB()
+    elseif color.r then
+      return color.r, color.g, color.b
+    end
+  end
+  return fallbackR, fallbackG, fallbackB
+end
+
+function ReforgeLite:UpdateSpeedPresetRadiosEnabled()
+  local radioFrame = self.settings and self.settings.speedPresetRadioFrame
+  if not radioFrame or not radioFrame.radios then
+    return
+  end
+
+  local enabled = not self.computeInProgress
+  local defaultR, defaultG, defaultB = GetColorRGB(NORMAL_FONT_COLOR, 1, 1, 1)
+  local disabledR, disabledG, disabledB = GetColorRGB(GRAY_FONT_COLOR, 0.5, 0.5, 0.5)
+
+  for _, radio in ipairs(radioFrame.radios) do
+    if enabled then
+      radio:Enable()
+      if radio.Text then
+        local original = radio.Text.originalColor
+        if original then
+          radio.Text:SetTextColor(original[1], original[2], original[3])
+        else
+          radio.Text:SetTextColor(defaultR, defaultG, defaultB)
+        end
+      end
+    else
+      radio:Disable()
+      if radio.Text then
+        radio.Text:SetTextColor(disabledR, disabledG, disabledB)
+      end
+    end
+  end
+end
+
 function ReforgeLite:FillSettings()
   self.settings:ClearCells()
   orderIds['settings'] = 0
 
-  local speedPresetRow = getOrderId('settings', self.settings)
+  local speedLabelRow = getOrderId('settings', self.settings)
   local speedOptions = {
     { value = "extra_fast", name = L["Extra Fast"] },
     { value = "fast", name = L["Fast"] },
     { value = "normal", name = L["Normal"] },
   }
 
-  if not self.settings.speedPresetRowFrame then
-    local rowFrame = CreateFrame("Frame", nil, self.settings)
-    rowFrame:SetHeight(ITEM_SIZE + 2)
+  self.settings:SetCellText(speedLabelRow, 0, L["Speed/Accuracy"] .. ":", "LEFT", nil, "GameFontNormal")
 
-    rowFrame.label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rowFrame.label:SetPoint("LEFT")
-    rowFrame.label:SetTextColor(1, 1, 1)
-    rowFrame.label:SetJustifyH("LEFT")
+  local speedRadioRow = getOrderId('settings', self.settings)
+  local selectedPreset = self.db.coreSpeedPreset or "fast"
+  local selectedPresetValid = false
+  for _, option in ipairs(speedOptions) do
+    if option.value == selectedPreset then
+      selectedPresetValid = true
+      break
+    end
+  end
+  if not selectedPresetValid then
+    selectedPreset = "fast"
+    self:SetCoreSpeedPreset(selectedPreset)
+  end
+  local radioFrame = self.settings.speedPresetRadioFrame
 
-    rowFrame.dropdown = GUI:CreateDropdown(rowFrame, speedOptions, {
-      default = self.db.coreSpeedPreset or "fast",
-      width = 140,
-      setter = function(_, value)
-        self:SetCoreSpeedPreset(value)
-      end,
-    })
-    rowFrame.dropdown:SetPoint("LEFT", rowFrame.label, "RIGHT", 8, 0)
+  local radioSpacing = 4
+  local radioTopPadding = 4
+  local radioBottomPadding = 12
+  if not radioFrame then
+    radioFrame = CreateFrame("Frame", nil, self.settings)
+    radioFrame.radios = {}
+    self.settings.speedPresetRadioFrame = radioFrame
+  else
+    radioFrame:SetParent(self.settings)
+    radioFrame:Show()
+  end
+  radioFrame:SetWidth(260)
 
-    self.settings.speedPresetRowFrame = rowFrame
+  local function UpdateRadioSelection(value)
+    for _, button in ipairs(radioFrame.radios) do
+      button:SetChecked(button.value == value)
+    end
+  end
+  self.settings.speedPresetDropdown = nil
+
+  local previous
+  local owner = self
+  for index, option in ipairs(speedOptions) do
+    local radio = radioFrame.radios[index]
+    if not radio then
+      radio = CreateFrame("CheckButton", nil, radioFrame, "UIRadioButtonTemplate")
+      radioFrame.radios[index] = radio
+    end
+
+    if not radio.Text then
+      local label = radio:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+      radio.Text = label
+      label:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+    else
+      radio.Text:ClearAllPoints()
+      radio.Text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+    end
+
+    radio:ClearAllPoints()
+    if previous then
+      radio:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -radioSpacing)
+    else
+      radio:SetPoint("TOPLEFT", radioFrame, "TOPLEFT", 0, -radioTopPadding)
+    end
+
+    radio.value = option.value
+    radio.Text:SetText(option.name)
+    if radio.Text and not radio.Text.originalColor then
+      local r, g, b = radio.Text:GetTextColor()
+      radio.Text.originalColor = {r, g, b}
+    end
+
+    radio:SetScript("OnClick", function(button)
+      if not button:GetChecked() then
+        button:SetChecked(true)
+        return
+      end
+      owner:SetCoreSpeedPreset(button.value)
+      UpdateRadioSelection(button.value)
+    end)
+
+    radio:Show()
+    previous = radio
   end
 
-  local speedRowFrame = self.settings.speedPresetRowFrame
-  speedRowFrame:Show()
-  speedRowFrame:SetParent(self.settings)
-  speedRowFrame.label:SetText(L["Speed/Accuracy"] .. ":")
-  speedRowFrame.dropdown:Show()
-  speedRowFrame.dropdown.values = speedOptions
-  speedRowFrame.dropdown:SetWidth(140)
-  speedRowFrame.dropdown:SetValue(self.db.coreSpeedPreset or "fast")
-  speedRowFrame.dropdown.setter = function(_, value)
-    self:SetCoreSpeedPreset(value)
+  for index = #radioFrame.radios, #speedOptions + 1, -1 do
+    local extra = radioFrame.radios[index]
+    if extra then
+      extra:Hide()
+    end
+    radioFrame.radios[index] = nil
   end
 
-  local totalWidth = speedRowFrame.label:GetStringWidth() + speedRowFrame.dropdown:GetWidth() + 12
-  speedRowFrame:SetWidth(totalWidth)
+  local totalHeight = 0
+  if #speedOptions > 0 then
+    local radioHeight = radioFrame.radios[1] and radioFrame.radios[1]:GetHeight() or 24
+    totalHeight = radioTopPadding + (#speedOptions * radioHeight) + ((#speedOptions - 1) * radioSpacing) + radioBottomPadding
+  else
+    totalHeight = radioTopPadding + radioBottomPadding + (ITEM_SIZE + 2)
+  end
 
-  self.settings:SetCell(speedPresetRow, 0, speedRowFrame, "LEFT")
+  radioFrame:SetHeight(totalHeight)
+  if self.settings and self.settings.SetRowHeight then
+    local desiredHeight = max(totalHeight, ITEM_SIZE + 2)
+    self.settings:SetRowHeight(speedRadioRow, desiredHeight)
+  end
+
+  UpdateRadioSelection(selectedPreset)
+  self:UpdateSpeedPresetRadiosEnabled()
+  self.settings:SetCell(speedRadioRow, 0, radioFrame, "TOPLEFT")
 
   self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Open window when reforging"],
     self.db.openOnReforge, function (val) self.db.openOnReforge = val end), "LEFT")
