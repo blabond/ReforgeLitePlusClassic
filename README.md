@@ -10,7 +10,7 @@ Please support him and the dedicated work to maintain the main version of the ad
 - **Faster calculation**
 - **3 stat values instead of 2**
 - **Reforge butt directly without having to display it first**
-- **Show 3–6 results to choose**
+- **Show 6 results to choose**
 ---
 
 ## Overview
