@@ -101,7 +101,10 @@ addonTable.CORE_SPEED_PRESET_MULTIPLIERS = {
 addonTable.CORE_SPEED_PRESET = addonTable.CORE_SPEED_PRESET or "fast"
 
 local DeepCopy = addonTable.DeepCopy
-local GetItemStats = addonTable.GetItemStatsUp
+local GetItemStats = addonTable.SafeGetItemStats or addonTable.GetItemStatsUp
+local GetCappedUpgradeLevel = addonTable.GetCappedUpgradeLevel
+local SafeGetDetailedItemLevelInfo = addonTable.SafeGetDetailedItemLevelInfo
+local GetLinkUpgradeData = addonTable.GetLinkUpgradeData
 
 addonTable.printLog = {}
 local gprint = print
@@ -395,6 +398,13 @@ ReforgeLite.itemStats = {
     RatingStat (statIds.EXP,     "ITEM_MOD_EXPERTISE_RATING",     EXPERTISE_ABBR, STAT_EXPERTISE,       CR_EXPERTISE),
     RatingStat (statIds.MASTERY, "ITEM_MOD_MASTERY_RATING_SHORT", STAT_MASTERY,   STAT_MASTERY,         CR_MASTERY),
 }
+
+if not addonTable.itemStats then
+  addonTable.itemStats = ReforgeLite.itemStats
+end
+if not addonTable.itemStatCount then
+  addonTable.itemStatCount = #ReforgeLite.itemStats
+end
 
 local REFORGE_TABLE_BASE = 112
 local reforgeTable = {
@@ -2288,19 +2298,180 @@ local function GetReforgeID(slotId)
 end
 
 local function GetItemUpgradeLevel(item)
-  if item:IsItemEmpty()
-  or not item:HasItemLocation()
-  or item:GetItemQuality() < Enum.ItemQuality.Rare
-  or item:GetCurrentItemLevel() < 458 then
+  if not item
+    or item:IsItemEmpty()
+    or not item:HasItemLocation()
+    or item:GetItemQuality() < Enum.ItemQuality.Rare
+    or item:GetCurrentItemLevel() < 458 then
     return 0
   end
 
-  local baseIlvl = C_Item.GetDetailedItemLevelInfo(item:GetItemID())
-  if not baseIlvl then
+  local itemId = item:GetItemID()
+  if not itemId or not SafeGetDetailedItemLevelInfo then
     return 0
   end
 
-  return (item:GetCurrentItemLevel() - baseIlvl) / 4
+  local baseFromAPI, _, _, rawBase = SafeGetDetailedItemLevelInfo(itemId, item:GetItemLocation(), item:GetItemLink())
+  local originalIlvl = rawBase or baseFromAPI
+  if not originalIlvl or originalIlvl <= 0 then
+    return 0
+  end
+
+  local currentIlvl = item:GetCurrentItemLevel() or 0
+  local upgrade = (currentIlvl - originalIlvl) / 4
+  if upgrade < 0 then
+    upgrade = 0
+  end
+  return floor(upgrade + 0.5)
+end
+
+local function CopyItemInfoFields(target, source)
+  wipe(target)
+  if not source then
+    return
+  end
+
+  for key, value in pairs(source) do
+    target[key] = value
+  end
+end
+
+local function DeriveItemUpgradeData(item)
+  if not item or item:IsItemEmpty() then
+    return 0, nil
+  end
+
+  local rareQuality = Enum and Enum.ItemQuality and Enum.ItemQuality.Rare or LE_ITEM_QUALITY_RARE or 3
+
+  if not item:HasItemLocation()
+    or item:GetItemQuality() < rareQuality then
+    return 0, nil
+  end
+
+  local link = item:GetItemLink()
+  if not link then
+    return 0, nil
+  end
+
+  local _, _, linkUpgradeDelta = GetLinkUpgradeData(link)
+
+  local baseIlvl
+
+  if SafeGetDetailedItemLevelInfo then
+    local best, effective, _, rawBase = SafeGetDetailedItemLevelInfo(item:GetItemID(), item:GetItemLocation(), link)
+    baseIlvl = rawBase or best
+
+    if (not baseIlvl or baseIlvl <= 0) and effective and effective > 0 then
+      baseIlvl = effective
+    end
+
+    if linkUpgradeDelta and linkUpgradeDelta > 0 then
+      local current = effective or (best and best > 0 and best) or item:GetCurrentItemLevel()
+      if current and current > 0 then
+        local candidate = current - linkUpgradeDelta
+        if candidate > 0 then
+          if not baseIlvl or baseIlvl <= 0 or baseIlvl >= current or (current - baseIlvl) < linkUpgradeDelta - 0.25 then
+            baseIlvl = candidate
+          end
+        end
+      end
+    end
+  end
+
+  if (not baseIlvl or baseIlvl <= 0) then
+    local _, _, _, infoLevel = GetItemInfo(link)
+    if infoLevel and infoLevel > 0 then
+      baseIlvl = infoLevel
+    end
+  end
+
+  local currentIlvl = item:GetCurrentItemLevel() or 0
+  if currentIlvl <= 0 and SafeGetDetailedItemLevelInfo then
+    local best, effective = SafeGetDetailedItemLevelInfo(item:GetItemID(), item:GetItemLocation(), link)
+    currentIlvl = (effective and effective > 0 and effective) or (best and best > 0 and best) or 0
+  end
+  if not currentIlvl or currentIlvl <= 0 then
+    if baseIlvl and baseIlvl > 0 then
+      return 0, baseIlvl
+    end
+    return 0, nil
+  end
+
+  if currentIlvl < 458 then
+    if baseIlvl and baseIlvl > 0 then
+      return 0, baseIlvl
+    end
+    return 0, nil
+  end
+
+  if (not baseIlvl or baseIlvl <= 0) and linkUpgradeDelta and linkUpgradeDelta > 0 then
+    baseIlvl = currentIlvl - linkUpgradeDelta
+  end
+
+  if not baseIlvl or baseIlvl <= 0 then
+    return 0, nil
+  end
+
+  local upgradeLevel = (currentIlvl - baseIlvl) / 4
+  if upgradeLevel < 0 then
+    upgradeLevel = 0
+  end
+
+  return floor(upgradeLevel + 0.5), baseIlvl
+end
+
+local function CollectItemInfoWithUpgrade(item)
+  if not item or item:IsItemEmpty() then
+    return
+  end
+
+  local link = item:GetItemLink()
+  if not link then
+    return
+  end
+
+  local derivedUpgrade, originalIlvl = DeriveItemUpgradeData(item)
+
+  local itemInfo = {
+    link = link,
+    itemId = item:GetItemID(),
+    itemGUID = item:GetItemGUID(),
+    ilvl = item:GetCurrentItemLevel(),
+  }
+
+  if item:HasItemLocation() then
+    itemInfo.itemLocation = item:GetItemLocation()
+  end
+
+  if originalIlvl and originalIlvl > 0 then
+    local roundedBase = floor(originalIlvl + 0.5)
+    itemInfo.baseIlvl = roundedBase
+    itemInfo.ilvlBase = roundedBase
+  end
+  if derivedUpgrade and derivedUpgrade > 0 then
+    itemInfo.upgradeLevel = derivedUpgrade
+  end
+
+  local baseIlvl, upgradeLevel, effectiveIlvl = addonTable.GetItemBaseAndUpgrade(itemInfo)
+
+  if (not baseIlvl or baseIlvl <= 0) and itemInfo.ilvl then
+    baseIlvl = itemInfo.ilvl
+  end
+
+  if (not effectiveIlvl or effectiveIlvl <= 0) and baseIlvl then
+    effectiveIlvl = baseIlvl + (upgradeLevel or 0) * 4
+  end
+
+  upgradeLevel = upgradeLevel or 0
+  baseIlvl = baseIlvl or 0
+  effectiveIlvl = effectiveIlvl or baseIlvl
+
+  itemInfo.baseIlvl = baseIlvl
+  itemInfo.upgradeLevel = upgradeLevel
+  itemInfo.effectiveIlvl = effectiveIlvl
+  itemInfo.ilvl = effectiveIlvl
+
+  return itemInfo, baseIlvl, upgradeLevel
 end
 
 function ReforgeLite:UpdateItems()
@@ -2316,37 +2487,60 @@ function ReforgeLite:UpdateItems()
     local reforgeSrc, reforgeDst
     v.itemInfo = v.itemInfo or {}
     local info = v.itemInfo
-    wipe(info)
     if not item:IsItemEmpty() then
-      info.link = item:GetItemLink()
-      info.itemId = item:GetItemID()
-      info.ilvl = item:GetCurrentItemLevel()
-      info.itemGUID = item:GetItemGUID()
-      info.upgradeLevel = GetItemUpgradeLevel(item)
-      info.reforge = GetReforgeID(v.slotId)
+      local itemInfo, baseIlvl, upgradeLevel = CollectItemInfoWithUpgrade(item)
+      if itemInfo then
+        CopyItemInfoFields(info, itemInfo)
+        info.reforge = GetReforgeID(v.slotId)
 
-      v.item = info.link
-      v.itemId = info.itemId
-      v.ilvl = info.ilvl
-      v.itemGUID = info.itemGUID
-      v.upgradeLevel = info.upgradeLevel
-      v.reforge = info.reforge
+        v.item = info.link
+        v.itemId = info.itemId
+        v.ilvl = info.ilvl
+        v.itemGUID = info.itemGUID
+        v.baseIlvl = baseIlvl
+        v.upgradeLevel = upgradeLevel
+        v.reforge = info.reforge
 
-      v.texture:SetTexture(item:GetItemIcon())
-      local qualityColor = item:GetItemQualityColor()
-      v.qualityColor = qualityColor
-      v.quality:SetVertexColor(qualityColor.r, qualityColor.g, qualityColor.b)
+        v.texture:SetTexture(item:GetItemIcon())
+        local qualityColor = item:GetItemQualityColor()
+        v.qualityColor = qualityColor
+        v.quality:SetVertexColor(qualityColor.r, qualityColor.g, qualityColor.b)
 
-      stats = GetItemStats(info, { ilvlCap = self.pdb.ilvlCap }) or {}
-      statsOrig = GetItemStats(info) or {}
-      if info.reforge then
-        local srcId, dstId = unpack(reforgeTable[info.reforge])
-        reforgeSrc, reforgeDst = self.itemStats[srcId].name, self.itemStats[dstId].name
-        local amount = floor ((stats[reforgeSrc] or 0) * addonTable.REFORGE_COEFF)
-        stats[reforgeSrc] = (stats[reforgeSrc] or 0) - amount
-        stats[reforgeDst] = (stats[reforgeDst] or 0) + amount
+        local upgradeLevel = info.upgradeLevel or 0
+        local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
+
+        stats = GetItemStats(info, cappedUpgrade) or {}
+        statsOrig = GetItemStats(info, upgradeLevel) or {}
+        if info.reforge then
+          local srcId, dstId = unpack(reforgeTable[info.reforge])
+          reforgeSrc, reforgeDst = self.itemStats[srcId].name, self.itemStats[dstId].name
+          local amount = floor ((stats[reforgeSrc] or 0) * addonTable.REFORGE_COEFF)
+          stats[reforgeSrc] = (stats[reforgeSrc] or 0) - amount
+          stats[reforgeDst] = (stats[reforgeDst] or 0) + amount
+        end
+      else
+        CopyItemInfoFields(info)
+        info.reforge = nil
+        v.item = nil
+        v.itemId = nil
+        v.ilvl = nil
+        v.itemGUID = nil
+        v.baseIlvl = nil
+        v.upgradeLevel = nil
+        v.reforge = nil
+        v.texture:SetTexture(item:GetItemIcon())
+        local qualityColor = item:GetItemQualityColor()
+        v.qualityColor = qualityColor
+        if qualityColor then
+          v.quality:SetVertexColor(qualityColor.r, qualityColor.g, qualityColor.b)
+        else
+          v.quality:SetVertexColor(1, 1, 1)
+        end
+        stats = {}
+        statsOrig = {}
       end
     else
+      CopyItemInfoFields(info)
       v.item = nil
       v.itemId = nil
       v.ilvl = nil
@@ -2354,6 +2548,7 @@ function ReforgeLite:UpdateItems()
       v.itemGUID = nil
       v.qualityColor = nil
       v.upgradeLevel = nil
+      v.baseIlvl = nil
       v.texture:SetTexture (v.slotTexture)
       v.quality:SetVertexColor(1,1,1)
       stats = {}
@@ -2682,12 +2877,8 @@ function ReforgeLite:RefreshMethodWindow()
     local item = PLAYER_ITEM_DATA[v.slotId]
     if not item:IsItemEmpty() then
       v.itemInfo = v.itemInfo or {}
-      wipe(v.itemInfo)
-      v.itemInfo.link = item:GetItemLink()
-      v.itemInfo.itemId = item:GetItemID()
-      v.itemInfo.ilvl = item:GetCurrentItemLevel()
-      v.itemInfo.itemGUID = item:GetItemGUID()
-      v.itemInfo.upgradeLevel = GetItemUpgradeLevel(item)
+      local itemInfo = CollectItemInfoWithUpgrade(item)
+      CopyItemInfoFields(v.itemInfo, itemInfo)
       v.itemInfo.reforge = GetReforgeID(v.slotId)
 
       v.item = v.itemInfo.link
@@ -2753,12 +2944,8 @@ function ReforgeLite:UpdateMethodChecks ()
           local windowItem = self.methodWindow.items[index]
           if not item:IsItemEmpty() then
             windowItem.itemInfo = windowItem.itemInfo or {}
-            wipe(windowItem.itemInfo)
-            windowItem.itemInfo.link = item:GetItemLink()
-            windowItem.itemInfo.itemId = item:GetItemID()
-            windowItem.itemInfo.ilvl = item:GetCurrentItemLevel()
-            windowItem.itemInfo.itemGUID = item:GetItemGUID()
-            windowItem.itemInfo.upgradeLevel = GetItemUpgradeLevel(item)
+            local itemInfo = CollectItemInfoWithUpgrade(item)
+            CopyItemInfoFields(windowItem.itemInfo, itemInfo)
             windowItem.itemInfo.reforge = GetReforgeID(slotData.slotId)
             windowItem.item = windowItem.itemInfo.link
           else
@@ -2888,7 +3075,13 @@ function ReforgeLite:DoReforgeUpdate()
         C_Reforge.SetReforgeFromCursorItem()
         if newReforge then
           local id = UNFORGE_INDEX
-          local stats = GetItemStats(slotInfo.itemInfo or self.itemData[slotId].itemInfo, { ilvlCap = self.pdb.ilvlCap })
+          local reforgeItemInfo = slotInfo.itemInfo or self.itemData[slotId].itemInfo
+          local stats = {}
+          if reforgeItemInfo and reforgeItemInfo.link then
+            local upgradeLevel = reforgeItemInfo.upgradeLevel or 0
+            local cappedUpgrade = GetCappedUpgradeLevel(reforgeItemInfo.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
+            stats = GetItemStats(reforgeItemInfo, cappedUpgrade) or {}
+          end
           for s, reforgeInfo in ipairs(reforgeTable) do
             local srcstat, dststat = unpack(reforgeInfo)
             if (stats[self.itemStats[srcstat].name] or 0) ~= 0 and (stats[self.itemStats[dststat].name] or 0) == 0 then
@@ -3031,8 +3224,10 @@ function ReforgeLite:PLAYER_ENTERING_WORLD()
   self:GetConversion()
 end
 
+local ILVL_DISPLAY_FORMAT = "iLvl: %d"
+
 function ReforgeLite:PLAYER_AVG_ITEM_LEVEL_UPDATE()
-  self.itemLevel:SetFormattedText(CHARACTER_LINK_ITEM_LEVEL_TOOLTIP, select(2,GetAverageItemLevel()))
+  self.itemLevel:SetFormattedText(ILVL_DISPLAY_FORMAT, select(2, GetAverageItemLevel()))
 end
 
 function ReforgeLite:ADDON_LOADED (addon)

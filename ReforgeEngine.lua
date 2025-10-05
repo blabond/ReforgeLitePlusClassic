@@ -18,7 +18,8 @@ local function GetMaxMethodAlternatives()
   return addonTable.MAX_METHOD_ALTERNATIVES or 5
 end
 
-local GetItemStats = addonTable.GetItemStatsUp
+local GetItemStats = addonTable.SafeGetItemStats or addonTable.GetItemStatsUp
+local GetCappedUpgradeLevel = addonTable.GetCappedUpgradeLevel
 local TABLE_SIZE = 50000
 local MAX_CORE_STATES = addonTable.MAX_CORE_STATES or 4000
 local CORE_SPEED_PRESET_MULTIPLIERS = addonTable.CORE_SPEED_PRESET_MULTIPLIERS or {
@@ -231,8 +232,13 @@ function ReforgeLite:UpdateMethodStats (method)
   for i = 1, #self.itemData do
     local slotData = self.itemData[i]
     local info = slotData.itemInfo
-    local orgstats = info and GetItemStats(info) or {}
-    local stats = info and GetItemStats(info, { ilvlCap = self.pdb.ilvlCap }) or {}
+    local orgstats, stats = {}, {}
+    if info and info.link then
+      local upgradeLevel = info.upgradeLevel or 0
+      local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
+      orgstats = GetItemStats(info, upgradeLevel) or {}
+      stats = GetItemStats(info, cappedUpgrade) or {}
+    end
     local reforge = info and info.reforge
 
     method.items[i] = method.items[i] or {}
@@ -417,8 +423,13 @@ function ReforgeLite:InitializeMethod()
     method.items[i].stats = {}
     orgitems[i] = {}
     local info = self.itemData[i].itemInfo
-    local stats = info and GetItemStats(info, { ilvlCap = self.pdb.ilvlCap }) or {}
-    local orgstats = info and GetItemStats(info) or {}
+    local stats, orgstats = {}, {}
+    if info and info.link then
+      local upgradeLevel = info.upgradeLevel or 0
+      local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
+      stats = GetItemStats(info, cappedUpgrade) or {}
+      orgstats = GetItemStats(info, upgradeLevel) or {}
+    end
     for j, v in ipairs(self.itemStats) do
       method.items[i].stats[j] = (stats[v.name] or 0)
       orgitems[i][j] = (orgstats[v.name] or 0)

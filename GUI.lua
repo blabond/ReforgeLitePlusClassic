@@ -270,7 +270,11 @@ function GUI:CreateDropdown (parent, values, options)
     sel = tremove(self.unusedDropdowns)
     sel:SetParent(parent)
     sel:Show()
-    sel:SetEnabled(true)
+    if sel.EnableDropdown then
+      sel:EnableDropdown()
+    else
+      sel:SetEnabled(true)
+    end
     self.dropdowns[sel:GetName()] = sel
   else
     sel = CreateFrame("DropdownButton", self:GenerateWidgetName(), parent, "WowStyle1DropdownTemplate")
@@ -367,8 +371,19 @@ function GUI:CreateDropdown (parent, values, options)
     end
   end)
 
+  if not sel.EnableDropdown then
+    sel.EnableDropdown = function(dropdown)
+      dropdown:SetEnabled(true)
+    end
+  end
+  if not sel.DisableDropdown then
+    sel.DisableDropdown = function(dropdown)
+      dropdown:SetEnabled(false)
+    end
+  end
+
   sel:SetHeight(options.height or 20)
-  sel:SetEnabled(true)
+  sel:EnableDropdown()
   sel:SetValue(options.default)
   if options.width then
     sel:SetWidth(options.width)
