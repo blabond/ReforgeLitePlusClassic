@@ -1481,7 +1481,7 @@ function ReforgeLite:CreateOptionList ()
     for i = 2, NUM_CAPS do
       local dropdown = caps[i] and caps[i].stat
       if dropdown then
-        dropdown:SetEnabled(self.pdb.caps[i - 1] and self.pdb.caps[i - 1].stat ~= 0)
+        GUI:SetDropdownEnabled(dropdown, self.pdb.caps[i - 1] and self.pdb.caps[i - 1].stat ~= 0)
       end
     end
   end

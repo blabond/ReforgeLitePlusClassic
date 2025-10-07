@@ -55,6 +55,66 @@ function GUI:ClearFocus()
   self:ClearEditFocus()
 end
 
+local function DropdownIsEnabled(dropdown)
+  if not dropdown then
+    return false
+  end
+
+  if dropdown.IsEnabled then
+    local ok, enabled = pcall(dropdown.IsEnabled, dropdown)
+    if ok then
+      return enabled and true or false
+    end
+  end
+
+  return dropdown.isDisabled == nil or dropdown.isDisabled == false
+end
+
+function GUI:SetDropdownEnabled(dropdown, enabled)
+  if not dropdown then
+    return
+  end
+
+  if dropdown.SetEnabled then
+    dropdown:SetEnabled(enabled)
+  end
+
+  if enabled then
+    if dropdown.EnableDropdown then
+      dropdown:EnableDropdown()
+    end
+    if dropdown.Enable then
+      dropdown:Enable()
+    end
+  else
+    if dropdown.DisableDropdown then
+      dropdown:DisableDropdown()
+    end
+    if dropdown.Disable then
+      dropdown:Disable()
+    end
+  end
+
+  local button = dropdown.Button
+  if button then
+    if enabled then
+      if button.Enable then
+        button:Enable()
+      elseif button.SetEnabled then
+        button:SetEnabled(true)
+      end
+    else
+      if button.Disable then
+        button:Disable()
+      elseif button.SetEnabled then
+        button:SetEnabled(false)
+      end
+    end
+  end
+
+  dropdown.isDisabled = not enabled
+end
+
 function GUI:Lock()
   for _, frames in ipairs({self.panelButtons, self.imgButtons, self.editBoxes, self.checkButtons}) do
     for _, frame in pairs(frames) do
@@ -76,14 +136,14 @@ function GUI:Lock()
     end
   end
   for _, dropdown in pairs(self.dropdowns) do
-    if dropdown:IsEnabled() then
-      dropdown:SetEnabled(false)
+    if DropdownIsEnabled(dropdown) then
+      self:SetDropdownEnabled(dropdown, false)
       dropdown.locked = true
     end
   end
   for _, dropdown in pairs(self.filterDropdowns or {}) do
-    if dropdown:IsEnabled() and not dropdown.preventLock then
-      dropdown:SetEnabled(false)
+    if DropdownIsEnabled(dropdown) and not dropdown.preventLock then
+      self:SetDropdownEnabled(dropdown, false)
       dropdown.locked = true
     end
   end
@@ -111,13 +171,13 @@ function GUI:Unlock()
   end
   for _, dropdown in pairs(self.dropdowns) do
     if dropdown.locked then
-      dropdown:SetEnabled(true)
+      self:SetDropdownEnabled(dropdown, true)
       dropdown.locked = nil
     end
   end
   for _, dropdown in pairs(self.filterDropdowns or {}) do
     if dropdown.locked then
-      dropdown:SetEnabled(true)
+      self:SetDropdownEnabled(dropdown, true)
       dropdown.locked = nil
     end
   end
@@ -247,7 +307,6 @@ function GUI:CreateFilterDropdown (parent, text, options)
 
     dropdown.Recycle = function(frame)
       frame:Hide()
-      frame:ClearScripts()
       frame.originalResizeToTextPadding = frame.resizeToTextPadding
       frame.resizeToTextPadding = nil
       self.filterDropdowns[frame:GetName()] = nil
@@ -270,11 +329,7 @@ function GUI:CreateDropdown (parent, values, options)
     sel = tremove(self.unusedDropdowns)
     sel:SetParent(parent)
     sel:Show()
-    if sel.EnableDropdown then
-      sel:EnableDropdown()
-    else
-      sel:SetEnabled(true)
-    end
+    self:SetDropdownEnabled(sel, true)
     self.dropdowns[sel:GetName()] = sel
   else
     sel = CreateFrame("DropdownButton", self:GenerateWidgetName(), parent, "WowStyle1DropdownTemplate")
@@ -320,7 +375,6 @@ function GUI:CreateDropdown (parent, values, options)
 
     sel.Recycle = function(frame)
       frame:Hide()
-      frame:ClearScripts()
       frame.setter = nil
       frame.value = nil
       frame.selectedName = nil
@@ -374,16 +428,18 @@ function GUI:CreateDropdown (parent, values, options)
   if not sel.EnableDropdown then
     sel.EnableDropdown = function(dropdown)
       dropdown:SetEnabled(true)
+      dropdown.isDisabled = false
     end
   end
   if not sel.DisableDropdown then
     sel.DisableDropdown = function(dropdown)
       dropdown:SetEnabled(false)
+      dropdown.isDisabled = true
     end
   end
 
   sel:SetHeight(options.height or 20)
-  sel:EnableDropdown()
+  self:SetDropdownEnabled(sel, true)
   sel:SetValue(options.default)
   if options.width then
     sel:SetWidth(options.width)
