@@ -347,7 +347,7 @@ do
     priest = { discipline = 256, holy = 257, shadow = 258 },
     rogue = { assassination = 259, combat = 260, subtlety = 261 },
     shaman = { elemental = 262, enhancement = 263, restoration = 264 },
-    warlock = { afflication = 265, demonology = 266, destruction = 267 },
+    warlock = { affliction = 265, demonology = 266, destruction = 267 },
     warrior = { arms = 71, fury = 72, protection = 73 }
   }
 
@@ -384,14 +384,14 @@ do
         [C_Spell.GetSpellName(49020)] = { -- Obliterate
           icon = 135771,
           weights = {
-            0, 0, 0, 87, 44, 35, 87, 39
+            0, 0, 0, 87, 44, 48, 87, 35
           },
           caps = MeleeCaps,
         },
         [L["Masterfrost"]] = {
           icon = 135833,
           weights = {
-            0, 0, 0, 84, 36, 37, 83, 53
+            0, 0, 0, 73, 36, 47, 73, 50
           },
           caps = MeleeCaps,
         }
@@ -406,7 +406,7 @@ do
     ["DRUID"] = {
       [specs.druid.balance] = {
         weights = {
-          0, 0, 0, 127, 56, 80, 0, 41
+          0, 0, 0, 127, 61, 63, 0, 38
         },
         caps = {
           HitCapSpell,
@@ -424,7 +424,7 @@ do
       },
       [specs.druid.feralcombat] = {
           weights = {
-            0, 0, 0, 330, 320, 220, 330, 380
+            0, 0, 0, 44, 49, 42, 44, 39
           },
           caps = AtMostMeleeCaps,
       },
@@ -455,7 +455,7 @@ do
     ["HUNTER"] = {
       [specs.hunter.beastmastery] = {
           weights = {
-            0, 0, 0, 63, 30, 37, 59, 32
+            0, 0, 0, 63, 28, 27, 59, 25
           },
           caps = MeleeCaps,
       },
@@ -467,7 +467,7 @@ do
       },
       [specs.hunter.survival] = {
           weights = {
-            0, 0, 0, 59, 33, 25, 57, 21
+            0, 0, 0, 59, 29, 25, 57, 21
           },
           caps = MeleeCaps,
       },
@@ -475,19 +475,19 @@ do
     ["MAGE"] = {
       [specs.mage.arcane] = {
           weights = {
-            0, 0, 0, 131, 53, 70, 0, 68
+            0, 0, 0, 145, 52, 60, 0, 63
           },
           caps = CasterCaps,
       },
       [specs.mage.fire] = {
           weights = {
-            0, 0, 0, 121, 88, 73, 0, 73
+            0, 0, 0, 121, 94, 95, 0, 59
           },
           caps = CasterCaps,
       },
       [specs.mage.frost] = {
           weights = {
-            0, 0, 0, 115, 49, 60, 0, 47
+            0, 0, 0, 115, 49, 51, 0, 44
           },
           caps = CasterCaps,
       },
@@ -516,14 +516,14 @@ do
         [C_Spell.GetSpellName(114355)] = { -- Dual Wield
           icon = 132147,
           weights = {
-            0, 0, 0, 141, 46, 57, 99, 39
+            0, 0, 0, 141, 44, 49, 99, 39
           },
           caps = MeleeCaps,
         },
         [AUCTION_SUBCATEGORY_TWO_HANDED] = { -- Two-Handed
           icon = 135145,
           weights = {
-            0, 0, 0, 138, 46, 54, 122, 38
+            0, 0, 0, 141, 64, 63, 141, 62
           },
           caps = MeleeCaps,
         },
@@ -581,7 +581,7 @@ do
       },
       [specs.priest.shadow] = {
         weights = {
-          0, 0, 0, 85, 42, 76, 0, 48
+          0, 0, 0, 85, 46, 59, 0, 44
         },
         caps = CasterCaps
       },
@@ -589,7 +589,7 @@ do
     ["ROGUE"] = {
       [specs.rogue.assassination] = {
         weights = {
-          0, 0, 0, 120, 35, 37, 120, 41
+          0, 0, 0, 46, 37, 35, 42, 41
         },
         caps = MeleeCaps,
       },
@@ -609,13 +609,13 @@ do
     ["SHAMAN"] = {
       [specs.shaman.elemental] = {
         weights = {
-          0, 0, 0, 60, 20, 40, 0, 30
+          0, 0, 0, 118, 71, 48, 0, 73
         },
         caps = CasterCaps,
       },
       [specs.shaman.enhancement] = {
         weights = {
-          0, 0, 0, 149, 66, 84, 130, 121
+          0, 0, 0, 97, 41, 42, 97, 46
         },
         caps = MeleeCaps,
       },
@@ -626,21 +626,21 @@ do
       },
     },
     ["WARLOCK"] = {
-      [specs.warlock.afflication] = {
+      [specs.warlock.affliction] = {
         weights = {
-          0, 0, 0, 93, 38, 58, 0, 80
+          0, 0, 0, 90, 56, 80, 0, 68
         },
         caps = CasterCaps,
       },
       [specs.warlock.destruction] = {
         weights = {
-          0, 0, 0, 83, 59, 57, 0, 61
+          0, 0, 0, 93, 55, 50, 0, 61
         },
         caps = CasterCaps,
       },
       [specs.warlock.demonology] = {
         weights = {
-          0, 0, 0, 400, 51, 275, 0, 57
+          0, 0, 0, 400, 60, 66, 0, 63
         },
         caps = CasterCaps,
       },
@@ -648,7 +648,7 @@ do
     ["WARRIOR"] = {
       [specs.warrior.arms] = {
         weights = {
-          0, 0, 0, 140, 59, 32, 120, 39
+          0, 0, 0, 188, 65, 30, 139, 49
         },
         caps = MeleeCaps
       },
