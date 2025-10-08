@@ -1,4 +1,4 @@
-# ReforgePlusLite (MoP Classic)
+# ReforgeLite Plus (MoP Classic)
 
 Continued from: [ReforgeLite Classic](https://www.curseforge.com/wow/addons/reforgelite-classic)  
 Forked off ReforgeLite Classic, maintained by **Brues1**.  
@@ -14,7 +14,7 @@ Please support him and the dedicated work to maintain the main version of the ad
 ---
 
 ## Overview
-ReforgeLite is a lightweight reforging calculator that helps you figure out the optimal strategy to reforge your gear given your stat weights and caps without leaving the game.
+ReforgeLite Plus is a lightweight reforging calculator that helps you figure out the optimal strategy to reforge your gear given your stat weights and caps without leaving the game.
 
 ---
 
