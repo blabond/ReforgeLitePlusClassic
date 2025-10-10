@@ -4,8 +4,9 @@ local REFORGE_COEFF = addonTable.REFORGE_COEFF
 local abs = math.abs
 local max = math.max
 
-local EXACT_UNDER_TOLERANCE = 3
-local EXACT_OVER_TOLERANCE = 35
+local AT_LEAST_UNDER_TOLERANCE = 1
+local EXACT_UNDER_TOLERANCE = 1
+local EXACT_OVER_TOLERANCE = 15
 local ReforgeLite = addonTable.ReforgeLite
 local L = addonTable.L
 local DeepCopy = addonTable.DeepCopy
@@ -20,7 +21,7 @@ end
 
 local GetItemStats = addonTable.SafeGetItemStats or addonTable.GetItemStatsUp
 local GetCappedUpgradeLevel = addonTable.GetCappedUpgradeLevel
-local TABLE_SIZE = 50000
+local TABLE_SIZE = 10000
 local MAX_CORE_STATES = addonTable.MAX_CORE_STATES or 4000
 local CORE_SPEED_PRESET_MULTIPLIERS = addonTable.CORE_SPEED_PRESET_MULTIPLIERS or {
   normal = 1,
@@ -82,6 +83,22 @@ local function GetCapIndex(caps, stat)
   end
 end
 
+local function IsWithinAtLeastTolerance(value, targetValue)
+  value = value or 0
+  targetValue = targetValue or 0
+  return value >= (targetValue - AT_LEAST_UNDER_TOLERANCE)
+end
+
+local function CalculateAtLeastPenalty(deficit, baseWeight)
+  if deficit <= 0 then
+    return 0
+  elseif deficit <= AT_LEAST_UNDER_TOLERANCE then
+    return 0
+  end
+
+  return deficit * baseWeight * 5
+end
+
 local function GetCapMismatchPenalty(cap, value, weights)
   if not cap or not cap.stat or cap.stat == 0 then
     return 0
@@ -93,10 +110,7 @@ local function GetCapMismatchPenalty(cap, value, weights)
     local targetValue = point.value or 0
     if point.method == addonTable.StatCapMethods.Exactly then
       if cap.forceExactAsAtLeast then
-        local deficit = targetValue - value
-        if deficit > 0 then
-          penalty = penalty + deficit * baseWeight * 5
-        end
+        penalty = penalty + CalculateAtLeastPenalty(targetValue - value, baseWeight)
       else
         local diff = value - targetValue
         if diff > 0 then
@@ -108,15 +122,12 @@ local function GetCapMismatchPenalty(cap, value, weights)
           local deficit = -diff
           if deficit > EXACT_UNDER_TOLERANCE then
             penalty = penalty + (deficit - EXACT_UNDER_TOLERANCE) * baseWeight * 50
+            penalty = penalty + deficit * baseWeight * 10
           end
-          penalty = penalty + deficit * baseWeight * 10
         end
       end
     elseif point.method == addonTable.StatCapMethods.AtLeast then
-      local deficit = targetValue - value
-      if deficit > 0 then
-        penalty = penalty + deficit * baseWeight * 5
-      end
+      penalty = penalty + CalculateAtLeastPenalty(targetValue - value, baseWeight)
     elseif point.method == addonTable.StatCapMethods.AtMost then
       local excess = value - targetValue
       if excess > 0 then
@@ -303,20 +314,24 @@ end
 
 function ReforgeLite:CapAllows (cap, value)
   for _,v in ipairs(cap.points) do
-    if v.method == addonTable.StatCapMethods.AtLeast and value < v.value then
-      return false
+    if v.method == addonTable.StatCapMethods.AtLeast then
+      if not IsWithinAtLeastTolerance(value, v.value) then
+        return false
+      end
     elseif v.method == addonTable.StatCapMethods.AtMost and value > v.value then
       return false
     elseif v.method == addonTable.StatCapMethods.Exactly then
       if cap.forceExactAsAtLeast then
-        if value < v.value then
+        if not IsWithinAtLeastTolerance(value, v.value) then
           return false
         end
       else
-        if value > (v.value + EXACT_OVER_TOLERANCE) + 0.5 then
+        local lowerBound = (v.value - EXACT_UNDER_TOLERANCE) - 0.5
+        local upperBound = (v.value + EXACT_OVER_TOLERANCE) + 0.5
+        if value > upperBound then
           return false
         end
-        if value < (v.value - EXACT_UNDER_TOLERANCE) - 0.5 then
+        if value < lowerBound then
           return false
         end
       end
@@ -337,7 +352,29 @@ end
 
 ------------------------------------- CLASSIC REFORGE ------------------------------
 
-function ReforgeLite:MakeReforgeOption(item, data, src, dst)
+function ReforgeLite:MakeReforgeOption(item, data, src, dst, allowZeroWeightedTargets)
+  local function IsPositiveAdditionForbidden(stat)
+    if allowZeroWeightedTargets then
+      return false
+    end
+    if not stat or stat <= 0 then
+      return false
+    end
+    return (data.weights[stat] or 0) == 0
+  end
+
+  if dst and IsPositiveAdditionForbidden(dst) then
+    return nil
+  end
+
+  if dst and data.conv[dst] then
+    for to, factor in pairs(data.conv[dst]) do
+      if factor > 0 and IsPositiveAdditionForbidden(to) then
+        return nil
+      end
+    end
+  end
+
   local deltas = CreateZeroedArray()
   local dscore = 0
   if src and dst then
@@ -389,19 +426,27 @@ function ReforgeLite:GetItemReforgeOptions (item, data, slot)
     if info and info.reforge then
       src, dst = unpack(self.reforgeTable[info.reforge])
     end
-    return { self:MakeReforgeOption (item, data, src, dst) }
+    local option = self:MakeReforgeOption(item, data, src, dst, true)
+    if not option then
+      option = self:MakeReforgeOption(item, data)
+    end
+    return { option }
   end
   local aopt = {}
   local baseOption = self:MakeReforgeOption (item, data)
-  aopt[EncodeState(baseOption.deltas)] = baseOption
+  if baseOption then
+    aopt[EncodeState(baseOption.deltas)] = baseOption
+  end
   for src = 1, #self.itemStats do
     if item.stats[src] > 0 then
       for dst = 1, #self.itemStats do
         if item.stats[dst] == 0 then
           local o = self:MakeReforgeOption (item, data, src, dst)
-          local pos = EncodeState(o.deltas)
-          if not aopt[pos] or aopt[pos].score < o.score then
-            aopt[pos] = o
+          if o then
+            local pos = EncodeState(o.deltas)
+            if not aopt[pos] or aopt[pos].score < o.score then
+              aopt[pos] = o
+            end
           end
         end
       end

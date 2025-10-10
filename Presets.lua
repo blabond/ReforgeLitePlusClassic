@@ -608,10 +608,20 @@ do
     },
     ["SHAMAN"] = {
       [specs.shaman.elemental] = {
-        weights = {
-          0, 0, 0, 118, 71, 48, 0, 73
+        [L["Single Target"]] = {
+          icon = 136048,
+          weights = {
+            0, 0, 0, 110, 37, 47, 0, 44
+          },
+          caps = CasterCaps,
         },
-        caps = CasterCaps,
+        [L["AoE"]] = {
+          icon = 136015,
+          weights = {
+            0, 0, 0, 118, 71, 48, 0, 73
+          },
+          caps = CasterCaps,
+        },
       },
       [specs.shaman.enhancement] = {
         weights = {
@@ -746,7 +756,8 @@ function ReforgeLite:InitPresets()
     rootDescription:CreateButton(SAVE, function()
       GUI.CreateStaticPopup("REFORGE_LITE_SAVE_PRESET",
         L["Enter the preset name"],
-        function(text)
+        function(popup)
+          local text = popup:GetEditBox():GetText()
           self.cdb.customPresets[text] = {
             caps = addonTable.DeepCopy(self.pdb.caps),
             weights = addonTable.DeepCopy(self.pdb.weights),
@@ -758,6 +769,62 @@ function ReforgeLite:InitPresets()
     end)
 
     rootDescription:CreateDivider()
+
+    local function FormatWeightsTooltip(tooltip, element, weights, addBlank)
+      if not weights then
+        return
+      end
+
+      local statWeights = {}
+      for index, weight in ipairs(weights) do
+        if weight and weight > 0 then
+          local statInfo = addonTable.itemStats[index]
+          local statName = statInfo and statInfo.long or tostring(index)
+          tinsert(statWeights, { stat = statName, weight = weight, index = index })
+        end
+      end
+
+      if #statWeights == 0 then
+        return
+      end
+
+      local label
+      if type(element) == "table" then
+        label = element.text
+        if (not label or label == "") and element.GetText then
+          local ok, text = pcall(element.GetText, element)
+          if ok then
+            label = text
+          end
+        end
+      elseif type(element) == "string" then
+        label = element
+      end
+
+      if label and label ~= "" then
+        tooltip:AddLine(label)
+      end
+
+      tsort(statWeights, function(a, b)
+        if a.weight == b.weight then
+          return a.index < b.index
+        end
+        return a.weight > b.weight
+      end)
+
+      local r, g, b = 1, 1, 1
+      if addonTable.FONTS and addonTable.FONTS.normal then
+        r, g, b = addonTable.FONTS.normal:GetRGB()
+      end
+
+      for _, entry in ipairs(statWeights) do
+        tooltip:AddDoubleLine(entry.stat, entry.weight, r, g, b)
+      end
+
+      if addBlank then
+        tooltip:AddLine(" ")
+      end
+    end
 
     local function AddPresetButton(desc, info)
       if info.hasDelete then
@@ -780,17 +847,21 @@ function ReforgeLite:InitPresets()
             self:SetStatWeights(info.value.weights, info.value.caps or {})
           end
         end)
-        button:SetTooltip(function(tooltip)
+        button:SetTooltip(function(tooltip, element)
+          FormatWeightsTooltip(tooltip, element or info.text, info.value.weights, true)
           GameTooltip_AddNormalLine(tooltip, L["Click to load preset"])
           GameTooltip_AddColoredLine(tooltip, L["Shift+Click to delete"], RED_FONT_COLOR)
         end)
       else
-        desc:CreateButton(info.text, function()
+        local button = desc:CreateButton(info.text, function()
           if info.value.targetLevel then
             self.pdb.targetLevel = info.value.targetLevel
             self.targetLevel:SetValue(info.value.targetLevel)
           end
           self:SetStatWeights(info.value.weights, info.value.caps or {})
+        end)
+        button:SetTooltip(function(tooltip, element)
+          FormatWeightsTooltip(tooltip, element or info.text, info.value.weights)
         end)
       end
     end

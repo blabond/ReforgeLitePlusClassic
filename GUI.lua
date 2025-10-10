@@ -11,6 +11,7 @@ addonTable.FONTS = addonTable.FONTS or {
   gold = GOLD_FONT_COLOR,
   darkyellow = DARKYELLOW_FONT_COLOR,
   disabled = DISABLED_FONT_COLOR,
+  normal = NORMAL_FONT_COLOR,
 }
 
 GUI.widgetCount = 0
@@ -1064,16 +1065,11 @@ function GUI.CreateStaticPopup(name, text, options, legacyOpts)
     whileDead = true,
     hideOnEscape = true,
     OnAccept = function(self)
-      if hasEditBox then
-        onAccept(self:GetEditBox():GetText(), self)
-      else
-        onAccept(self)
-      end
+      onAccept(self)
     end,
     OnShow = function(self)
       local editBox = self:GetEditBox()
       if editBox and hasEditBox then
-        editBox:SetText("")
         editBox:SetFocus()
         self:GetButton1():Disable()
       else
@@ -1081,17 +1077,10 @@ function GUI.CreateStaticPopup(name, text, options, legacyOpts)
       end
       self:GetButton2():Enable()
     end,
-    OnHide = function(self)
-      ChatEdit_FocusActiveWindow()
-      local editBox = self:GetEditBox()
-      if editBox then
-        editBox:SetText("")
-      end
-    end,
     EditBoxOnEnterPressed = function(editBox)
       local parent = editBox:GetParent()
       if parent:GetButton1():IsEnabled() then
-        onAccept(editBox:GetText(), parent)
+        onAccept(parent)
         parent:Hide()
       end
     end,
