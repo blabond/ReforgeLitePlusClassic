@@ -88,6 +88,37 @@ ReforgeLite.methodAlternatives = nil
 ReforgeLite.allMethodAlternatives = nil
 ReforgeLite.selectedMethodAlternative = nil
 
+if not addonTable.L then
+  local translations = {}
+  local lower = string.lower
+  addonTable.L = setmetatable(translations, {
+    __index = function(self, key)
+      if type(key) == "string" then
+        local lowerKey = lower(key)
+        if lowerKey ~= key then
+          local lowerValue = rawget(self, lowerKey)
+          if lowerValue ~= nil then
+            rawset(self, key, lowerValue)
+            return lowerValue
+          end
+        end
+      end
+
+      rawset(self, key, key or "")
+      return self[key]
+    end,
+    __newindex = function(self, key, value)
+      rawset(self, key, value)
+      if type(key) == "string" then
+        local lowerKey = lower(key)
+        if lowerKey ~= key then
+          rawset(self, lowerKey, value)
+        end
+      end
+    end,
+  })
+end
+
 local L = addonTable.L
 local GUI = addonTable.GUI
 addonTable.MAX_LOOPS = 200000
@@ -109,6 +140,10 @@ local function print(...)
 end
 addonTable.print = print
 
+local CopyTableShallow = addonTable.CopyTableShallow
+
+local GetBaseItemStats = GetItemStats
+
 do
 
   local floor = math.floor
@@ -119,23 +154,19 @@ do
   local ItemStatsRef = addonTable.ItemStatsRef or {}
 
   local C_Item = C_Item
-  local GetBaseItemStats = GetItemStats
   local GetItemInfo = GetItemInfo
 
   function addonTable.GetRandPropPoints(iLvl, t)
       return (RandPropPoints[iLvl] and RandPropPoints[iLvl][t] or 0)
   end
 
-  local function CoerceItemInfo(itemInfoOrLink)
-      if type(itemInfoOrLink) == "table" then
-          return itemInfoOrLink
-      elseif itemInfoOrLink then
-          return { link = itemInfoOrLink }
-      end
-  end
-
   local function EnsureItemInfoTable(itemInfoOrLink)
-      local itemInfo = CoerceItemInfo(itemInfoOrLink)
+      local itemInfo
+      if type(itemInfoOrLink) == "table" then
+          itemInfo = itemInfoOrLink
+      elseif itemInfoOrLink then
+          itemInfo = { link = itemInfoOrLink }
+      end
       if not itemInfo then
           return
       end
@@ -243,7 +274,6 @@ do
       return ilvlCap, upgradeLevel
   end
 
-  addonTable.CoerceItemInfo = CoerceItemInfo
   addonTable.EnsureItemInfoTable = EnsureItemInfoTable
   addonTable.NormalizeOverrides = NormalizeOverrides
   addonTable.GetLinkUpgradeData = GetLinkUpgradeData
@@ -637,34 +667,6 @@ do
   addonTable.ComputeEffectiveItemLevel = ComputeEffectiveItemLevelPublic
   _G.ComputeEffectiveItemLevel = ComputeEffectiveItemLevelPublic
 
-  local function GetItemInfoUp(link, upgrade)
-      local id = C_Item.GetItemInfoInstant(link)
-      local iLvl = C_Item.GetDetailedItemLevelInfo(id)
-      return id, iLvl + (upgrade or 0) * 4, iLvl
-  end
-
-  function addonTable.GetItemStatsUp(link, upgrade)
-      local result = GetItemStats(link)
-      if result and upgrade and upgrade > 0 then
-          local id, iLvl, iLvlBase = GetItemInfoUp(link, upgrade)
-          local budget, ref
-          if RandPropPoints[iLvl] and ItemUpgradeStats[id] then
-              budget = RandPropPoints[iLvl][ItemUpgradeStats[id][1]]
-              ref = ItemStatsRef[ItemUpgradeStats[id][2] + 1]
-          end
-          for sid, sv in ipairs(addonTable.itemStats) do
-              if result[sv.name] then
-                  if budget and ref and ref[sid] then
-                      result[sv.name] = floor(ref[sid][1] * budget * 0.0001 - ref[sid][2] * 160 + 0.5)
-                  else
-                      result[sv.name] = floor(tonumber(result[sv.name]) * math.pow(1.15, (iLvl - iLvlBase) / 15))
-                  end
-              end
-          end
-      end
-      return result
-  end
-
   function addonTable.GetCappedUpgradeLevel(baseIlvl, upgradeLevel, ilvlCap)
       upgradeLevel = tonumber(upgradeLevel) or 0
       if upgradeLevel < 0 then
@@ -692,69 +694,10 @@ do
 
       return upgradeLevel
   end
-
-  function addonTable.SafeGetItemStats(itemInfoOrLink, overrides, upgradeOverride)
-      local handler = addonTable.GetItemStatsUp
-      if handler then
-          local link = itemInfoOrLink
-          local upgrade = upgradeOverride
-
-          if type(itemInfoOrLink) == "table" then
-              link = itemInfoOrLink.link
-
-              if upgrade == nil then
-                  if type(overrides) == "number" then
-                      upgrade = overrides
-                  elseif type(overrides) == "table" then
-                      upgrade = overrides.upgradeLevel or overrides[1]
-                  end
-              end
-
-              if upgrade == nil and itemInfoOrLink.upgradeLevel ~= nil then
-                  upgrade = itemInfoOrLink.upgradeLevel
-              end
-          else
-              if upgrade == nil and type(overrides) == "number" then
-                  upgrade = overrides
-              end
-          end
-
-          if type(upgrade) ~= "number" then
-              upgrade = tonumber(upgrade)
-          end
-
-          if not upgrade then
-              upgrade = 0
-          end
-
-          if type(link) ~= "string" or link == "" then
-              return {}
-          end
-
-          local stats = handler(link, upgrade)
-          if not stats then
-              return {}
-          end
-
-          return stats
-      end
-
-      local link = itemInfoOrLink
-      if type(link) == "table" then
-          link = link.link
-      end
-
-      if type(link) == "string" then
-          return GetBaseItemStats(link)
-      end
-
-      return nil
-  end
 end
 
 local DeepCopy = addonTable.DeepCopy
-local GetItemStats = addonTable.SafeGetItemStats or addonTable.GetItemStatsUp
-local GetCappedUpgradeLevel = addonTable.GetCappedUpgradeLevel
+local GetItemStats
 local SafeGetDetailedItemLevelInfo = addonTable.SafeGetDetailedItemLevelInfo
 local GetLinkUpgradeData = addonTable.GetLinkUpgradeData
 
@@ -795,6 +738,8 @@ local max = math.max
 
 local METHOD_ALTERNATIVE_BUTTON_HEIGHT = 32
 local METHOD_ALTERNATIVE_BUTTON_SPACING = 6
+local METHOD_ALTERNATIVE_BUTTON_MIN_WIDTH = 72
+local METHOD_ALTERNATIVE_COLUMN_SPACING = 8
 
 local function CreateDefaultCap()
   return {
@@ -833,7 +778,6 @@ local DefaultDB = {
     windowLocation = false,
     methodWindowLocation = false,
     openOnReforge = true,
-    updateTooltip = false,
     speed = addonTable.MAX_LOOPS * 0.8,
     coreSpeedPreset = "fast",
     activeWindowTitle = {0.6, 0, 0},
@@ -952,7 +896,7 @@ GUI.CreateStaticPopup("REFORGE_LITE_SAVE_PRESET", L["Enter the preset name"], fu
   elseif ReforgeLite.presetMenuGenerator and ReforgeLite.presetsButton then
     ReforgeLite.presetsButton:SetupMenu(ReforgeLite.presetMenuGenerator)
   end
-end)
+end, { hasEditBox = true, editBoxWidth = 240, dialogWidthPadding = 30 })
 
 local ignoredSlots = { [INVSLOT_TABARD] = true, [INVSLOT_BODY] = true }
 
@@ -986,7 +930,48 @@ local StatAdditives = {
   end,
 }
 
-local function RatingStat (i, name_, tip_, long_, id_)
+local tooltipStatPrefix = "^%+([%d,]+)%s+"
+
+local hitStatWeightLabel
+local hitResultLabel
+local dodgeStatLabel
+local masteryStatLabel
+
+local function RefreshItemStatLabels()
+  hitStatWeightLabel = addonTable.WEIGHT_HIT_LABEL or HIT
+  hitResultLabel = addonTable.RESULT_HIT_LABEL or hitStatWeightLabel
+  dodgeStatLabel = addonTable.STAT_DODGE_LABEL or STAT_DODGE
+  masteryStatLabel = addonTable.STAT_MASTERY_LABEL or STAT_MASTERY
+
+  local itemStats = ReforgeLite.itemStats
+  if type(itemStats) == "table" then
+    for _, stat in ipairs(itemStats) do
+      if stat and stat.name == "ITEM_MOD_DODGE_RATING" then
+        stat.tip = dodgeStatLabel
+      elseif stat and stat.name == "ITEM_MOD_HIT_RATING" then
+        stat.tip = hitStatWeightLabel
+        stat.long = hitStatWeightLabel
+        stat.resultLabel = hitResultLabel
+      elseif stat and stat.name == "ITEM_MOD_MASTERY_RATING_SHORT" then
+        stat.tip = masteryStatLabel
+      end
+    end
+  end
+
+  local statHeaders = ReforgeLite.statHeaders
+  if type(statHeaders) == "table" then
+    for index, header in ipairs(statHeaders) do
+      local stat = itemStats and itemStats[index]
+      if header and stat and header.SetText then
+        header:SetText(stat.tip or "")
+      end
+    end
+  end
+end
+
+RefreshItemStatLabels()
+
+local function RatingStat (i, name_, tip_, long_, id_, tooltipText)
   return {
     name = name_,
     tip = tip_,
@@ -1000,7 +985,8 @@ local function RatingStat (i, name_, tip_, long_, id_)
     end,
     mgetter = function (method, orig)
       return (orig and method.orig_stats and method.orig_stats[i]) or method.stats[i]
-    end
+    end,
+    tooltipPattern = tooltipStatPrefix .. (tooltipText or long_)
   }
 end
 
@@ -1018,15 +1004,17 @@ ReforgeLite.itemStats = {
       end,
       mgetter = function (method, orig)
         return (orig and method.orig_stats and method.orig_stats[statIds.SPIRIT]) or method.stats[statIds.SPIRIT]
-      end
+      end,
+      tooltipPattern = tooltipStatPrefix .. ITEM_MOD_SPIRIT_SHORT
     },
-    RatingStat (statIds.DODGE,   "ITEM_MOD_DODGE_RATING",         STAT_DODGE,     STAT_DODGE,           CR_DODGE),
+    RatingStat (statIds.DODGE,   "ITEM_MOD_DODGE_RATING",         dodgeStatLabel, STAT_DODGE,           CR_DODGE),
     RatingStat (statIds.PARRY,   "ITEM_MOD_PARRY_RATING",         STAT_PARRY,     STAT_PARRY,           CR_PARRY),
     --RatingStat (statIds.HIT,     "ITEM_MOD_HIT_RATING",           HIT,            HIT,                  CR_HIT),
     {
       name = "ITEM_MOD_HIT_RATING",
-      tip = HIT,
-      long = HIT,
+      tip = hitStatWeightLabel,
+      long = hitStatWeightLabel,
+      resultLabel = hitResultLabel,
       getter = function()
         local hit = GetCombatRating(CR_HIT)
         if (ReforgeLite.conversion[statIds.EXP] or {})[statIds.HIT] then
@@ -1036,13 +1024,16 @@ ReforgeLite.itemStats = {
       end,
       mgetter = function (method, orig)
         return (orig and method.orig_stats and method.orig_stats[statIds.HIT]) or method.stats[statIds.HIT]
-      end
+      end,
+      tooltipPattern = tooltipStatPrefix .. ITEM_MOD_HIT_RATING_SHORT
     },
     RatingStat (statIds.CRIT,    "ITEM_MOD_CRIT_RATING",          CRIT_ABBR,      CRIT_ABBR,            CR_CRIT),
     RatingStat (statIds.HASTE,   "ITEM_MOD_HASTE_RATING",         STAT_HASTE,     STAT_HASTE,           CR_HASTE),
     RatingStat (statIds.EXP,     "ITEM_MOD_EXPERTISE_RATING",     EXPERTISE_ABBR, STAT_EXPERTISE,       CR_EXPERTISE),
-    RatingStat (statIds.MASTERY, "ITEM_MOD_MASTERY_RATING_SHORT", STAT_MASTERY,   STAT_MASTERY,         CR_MASTERY),
+    RatingStat (statIds.MASTERY, "ITEM_MOD_MASTERY_RATING_SHORT", masteryStatLabel, STAT_MASTERY,         CR_MASTERY),
 }
+
+RefreshItemStatLabels()
 
 if not addonTable.itemStats then
   addonTable.itemStats = ReforgeLite.itemStats
@@ -1063,6 +1054,102 @@ local reforgeTable = {
   {statIds.MASTERY, statIds.SPIRIT}, {statIds.MASTERY, statIds.DODGE}, {statIds.MASTERY, statIds.PARRY}, {statIds.MASTERY, statIds.HIT}, {statIds.MASTERY, statIds.CRIT}, {statIds.MASTERY, statIds.HASTE}, {statIds.MASTERY, statIds.EXP},
 }
 ReforgeLite.reforgeTable = reforgeTable
+
+local scanTooltip = CreateFrame("GameTooltip", "ReforgeLiteScanTooltip", nil, "GameTooltipTemplate")
+local tooltipStatsCache = {}
+
+local function SetTooltipFromItemInfo(itemInfo)
+  scanTooltip:ClearLines()
+  scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+  if itemInfo.slotId then
+    local success = scanTooltip:SetInventoryItem("player", itemInfo.slotId)
+    if success then
+      return true
+    end
+  end
+  scanTooltip:SetHyperlink(itemInfo.link)
+  return true
+end
+
+function addonTable.GetItemStatsFromTooltip(itemInfo)
+  if type(itemInfo) ~= "table" or type(itemInfo.link) ~= "string" or itemInfo.link == "" then
+    return {}
+  end
+
+  if itemInfo.ilvl and itemInfo.originalIlvl and itemInfo.ilvl == itemInfo.originalIlvl then
+    return CopyTableShallow(GetBaseItemStats(itemInfo.link) or {})
+  end
+
+  local itemId = itemInfo.itemId
+  local itemLevel = itemInfo.ilvl
+  if itemId and itemLevel then
+    local cachedByLevel = tooltipStatsCache[itemId]
+    if cachedByLevel and cachedByLevel[itemLevel] then
+      return CopyTableShallow(cachedByLevel[itemLevel])
+    end
+  end
+
+  SetTooltipFromItemInfo(itemInfo)
+
+  local stats = {}
+  local itemStats = addonTable.itemStats or {}
+  local foundStats = 0
+  local maxStats = 2
+  local srcName, destName
+
+  if itemInfo.reforge then
+    local reforgeEntry = reforgeTable[itemInfo.reforge]
+    if reforgeEntry then
+      local srcId, dstId = unpack(reforgeEntry)
+      srcName = itemStats[srcId] and itemStats[srcId].name or nil
+      destName = itemStats[dstId] and itemStats[dstId].name or nil
+      if srcName and destName then
+        maxStats = 3
+      end
+    end
+  end
+
+  for _, region in ipairs({scanTooltip:GetRegions()}) do
+    if foundStats >= maxStats then
+      break
+    end
+    if region.GetText then
+      local text = region:GetText()
+      if text and text ~= "" then
+        for _, statInfo in ipairs(itemStats) do
+          if statInfo.tooltipPattern and not stats[statInfo.name] then
+            local value = text:match(statInfo.tooltipPattern)
+            if value then
+              foundStats = foundStats + 1
+              stats[statInfo.name] = tonumber((value:gsub(",", "")))
+              break
+            end
+          end
+        end
+      end
+    end
+  end
+
+  scanTooltip:Hide()
+
+  if srcName and destName and stats[srcName] and stats[destName] then
+    stats[srcName] = stats[srcName] + stats[destName]
+    stats[destName] = nil
+  end
+
+  if not next(stats) then
+    return CopyTableShallow(GetBaseItemStats(itemInfo.link) or {})
+  end
+
+  if itemId and itemLevel then
+    tooltipStatsCache[itemId] = tooltipStatsCache[itemId] or {}
+    tooltipStatsCache[itemId][itemLevel] = CopyTableShallow(stats)
+  end
+
+  return CopyTableShallow(stats)
+end
+
+GetItemStats = addonTable.GetItemStatsFromTooltip
 
 addonTable.REFORGE_COEFF = 0.4
 
@@ -1272,27 +1359,32 @@ function ReforgeLite:CreateCategory (name)
     end
   end
 
-  c.Toggle = function (category)
-    category.expanded = not category.expanded
-    self.pdb.categoryStates[name] = category.expanded
-    if c.expanded then
-      for k, v in pairs (category.frames) do
-        if not v.chidden then
-          v:Show ()
+  c.Refresh = function(category)
+    if category.expanded then
+      for _, frame in pairs(category.frames) do
+        if not frame.chidden then
+          frame:Show()
         end
       end
-      for k, v in pairs (category.anchors) do
-        v.frame:SetPoint (v.point, v.rel, v.relPoint, v.x, v.y)
+      for _, anchor in pairs(category.anchors) do
+        anchor.frame:SetPoint(anchor.point, anchor.rel, anchor.relPoint, anchor.x, anchor.y)
       end
     else
-      for k, v in pairs (category.frames) do
-        v:Hide ()
+      for _, frame in pairs(category.frames) do
+        frame:Hide()
       end
       for k, v in pairs (category.anchors) do
         v.frame:SetPoint (v.point, category.button, v.relPoint, v.x, v.y)
       end
     end
-    category.button:UpdateTexture ()
+
+    category.button:UpdateTexture()
+  end
+
+  c.Toggle = function (category)
+    category.expanded = not category.expanded
+    self.pdb.categoryStates[name] = category.expanded
+    category:Refresh()
     self:UpdateContentSize ()
   end
 
@@ -1573,6 +1665,66 @@ function ReforgeLite:CreateFrame()
   GUI:SetHelpButtonsShown(self.db.showHelp ~= false)
 end
 
+local function EnsureTableAutoWidthRespectsMinimums(table)
+  if not table or type(table.AutoSizeColumns) ~= "function" or table._hasMinWidthHook then
+    return
+  end
+
+  table._hasMinWidthHook = true
+
+  local originalAutoSizeColumns = table.AutoSizeColumns
+  table.AutoSizeColumns = function(tbl, columnIndex)
+    originalAutoSizeColumns(tbl, columnIndex)
+
+    local function enforceMinimum(colIndex)
+      if not colIndex then
+        return false
+      end
+
+      local desired = nil
+      if tbl.minColumnWidth and tbl.minColumnWidth[colIndex] then
+        desired = tbl.minColumnWidth[colIndex]
+      end
+      if not desired and tbl.defaultColumnWidth and tbl.defaultColumnWidth[colIndex] then
+        desired = tbl.defaultColumnWidth[colIndex]
+      end
+      if not desired then
+        return false
+      end
+
+      local current = tbl.colWidth and tbl.colWidth[colIndex]
+      if current == "AUTO" or (type(current) == "number" and current < desired) then
+        tbl.colWidth[colIndex] = desired
+        return true
+      end
+
+      return false
+    end
+
+    local adjusted = false
+    if columnIndex then
+      adjusted = enforceMinimum(columnIndex) or adjusted
+    else
+      if tbl.autoWidthColumns then
+        for colIndex, enabled in pairs(tbl.autoWidthColumns) do
+          if enabled then
+            adjusted = enforceMinimum(colIndex) or adjusted
+          end
+        end
+      end
+      if tbl.minColumnWidth then
+        for colIndex in pairs(tbl.minColumnWidth) do
+          adjusted = enforceMinimum(colIndex) or adjusted
+        end
+      end
+    end
+
+    if adjusted then
+      tbl:OnUpdateFix()
+    end
+  end
+end
+
 function ReforgeLite:CreateItemTable ()
   self.playerSpecTexture = self:CreateTexture (nil, "ARTWORK")
   self.playerSpecTexture:SetPoint ("TOPLEFT", 10, -28)
@@ -1595,10 +1747,22 @@ function ReforgeLite:CreateItemTable ()
   self.itemTable:SetPoint ("BOTTOM", 0, 10)
   self.itemTable:SetWidth (400)
   local autoColumns = {}
+  self.itemTable.defaultColumnWidth = self.itemTable.defaultColumnWidth or {}
+  self.itemTable.minColumnWidth = self.itemTable.minColumnWidth or {}
   for index = 1, #self.itemStats do
-    autoColumns[index] = index
+    local defaultWidth = 45
+    self.itemTable:SetColumnWidth(index, defaultWidth)
+    self.itemTable.defaultColumnWidth[index] = defaultWidth
+    local previousMin = self.itemTable.minColumnWidth[index] or 0
+    if previousMin < defaultWidth then
+      self.itemTable.minColumnWidth[index] = defaultWidth
+    end
+    autoColumns[#autoColumns + 1] = index
   end
-  self.itemTable:EnableColumnAutoWidth(unpack(autoColumns))
+  EnsureTableAutoWidthRespectsMinimums(self.itemTable)
+  if #autoColumns > 0 then
+    self.itemTable:EnableColumnAutoWidth(unpack(autoColumns))
+  end
 
   self.itemLevel = self:CreateFontString (nil, "OVERLAY", "GameFontNormal")
   ReforgeLite.itemLevel:SetPoint ("BOTTOMRIGHT", ReforgeLite.itemTable, "TOPRIGHT", 0, 8)
@@ -1614,6 +1778,19 @@ function ReforgeLite:CreateItemTable ()
   for i, v in ipairs (self.itemStats) do
     self.itemTable:SetCellText (0, i, v.tip, nil, {1, 0.8, 0})
     self.statHeaders[i] = self.itemTable.cells[0][i]
+  end
+
+  local masteryColumnIndex = statIds.MASTERY
+  local masteryHeader = self.statHeaders[masteryColumnIndex]
+  if masteryHeader then
+    local minWidth = math.ceil((masteryHeader:GetStringWidth() or 0) + 12)
+    if minWidth > 0 then
+      local previousMin = self.itemTable.minColumnWidth[masteryColumnIndex] or 0
+      if minWidth > previousMin then
+        self.itemTable.minColumnWidth[masteryColumnIndex] = minWidth
+      end
+      self.itemTable:AutoSizeColumns(masteryColumnIndex)
+    end
   end
   self.itemData = {}
   for i, v in ipairs (self.itemSlots) do
@@ -1673,11 +1850,14 @@ function ReforgeLite:CreateItemTable ()
     end
   end
   self.statTotals = {}
-  self.itemTable:SetCellText (#self.itemSlots + 1, 0, L["Sum"], "CENTER", {1, 0.8, 0})
+  self.itemTable:SetCellText (#self.itemSlots + 1, 0, "", "CENTER", {1, 0.8, 0})
   for i, v in ipairs (self.itemStats) do
     self.itemTable:SetCellText (#self.itemSlots + 1, i, "0", nil, {1, 0.8, 0})
     self.statTotals[i] = self.itemTable.cells[#self.itemSlots + 1][i]
   end
+
+  self.statColumnShown = {}
+  self.statColumnShownInitialized = false
 end
 
 function ReforgeLite:GetCapBaseRow(index)
@@ -2031,8 +2211,8 @@ function ReforgeLite:UpdateStatWeightList ()
     self.statWeights:SetCell (row, col + 1, self.statWeights.inputs[i])
   end
 
-  self.statWeights:SetColumnWidth (2, 50)
-  self.statWeights:SetColumnWidth (4, 50)
+  self.statWeights:SetColumnWidth (2, 61)
+  self.statWeights:SetColumnWidth (4, 61)
   self.statWeights:EnableColumnAutoWidth(1, 3)
 
   self.statCaps:Show2 ()
@@ -2044,6 +2224,9 @@ end
 function ReforgeLite:CreateOptionList ()
   self.statWeightsCategory = self:CreateCategory (L["Stat Weights"])
   self:SetAnchor (self.statWeightsCategory, "TOPLEFT", self.content, "TOPLEFT", 2, -2)
+
+  self.statWeightsHelpButton = GUI:CreateHelpButton(self.content, L["|cffffffffPresets:|r Load pre-configured stat weights and caps for your spec. Click to select from class-specific presets, custom saved presets, or Pawn imports.\n\n|cffffffffImport:|r Use stat weights from WoWSims, Pawn, or QuestionablyEpic. WoWSims and QE can also import pre-calculated reforge plans.\n\n|cffffffffTarget Level:|r Select your raid difficulty to calculate stat caps at the appropriate level (PvP, Heroic Dungeon, or Raid).\n\n|cffffffffBuffs:|r Enable raid buffs you'll have active (Spell Haste, Melee Haste, Mastery) to account for their stat bonuses in cap calculations.\n\n|cffffffffStat Weights:|r Assign relative values to each stat. Higher weights mean the optimizer will prioritize that stat more when reforging. For example, if Hit has weight 60 and Crit has weight 20, the optimizer values Hit three times more than Crit.\n\n|cffffffffStat Caps:|r Set minimum or maximum values for specific stats. Use presets (Hit Cap, Expertise Cap, Haste Breakpoints) or enter custom values. The optimizer will respect these caps when calculating the optimal reforge plan."], {scale = 0.5})
+  self.statWeightsHelpButton:SetPoint("LEFT", self.statWeightsCategory.name, "RIGHT", 4, 0)
 
   self.presetsButton = GUI:CreateFilterDropdown(self.content, L["Presets"], {resizeToTextPadding = 35})
   self.statWeightsCategory:AddFrame(self.presetsButton)
@@ -2104,8 +2287,8 @@ function ReforgeLite:CreateOptionList ()
   self:SetAnchor (self.statWeights, "TOPLEFT", self.targetLevel.text, "BOTTOMLEFT", 0, -8)
   self.statWeightsCategory:AddFrame (self.statWeights)
   self.statWeights:SetRowHeight (ITEM_SIZE + 2)
-  self.statWeights:SetColumnWidth (2, 50)
-  self.statWeights:SetColumnWidth (4, 50)
+  self.statWeights:SetColumnWidth (2, 61)
+  self.statWeights:SetColumnWidth (4, 61)
   self.statWeights:EnableColumnAutoWidth(1, 3)
 
   self.statCaps = GUI:CreateTable (NUM_CAPS, 4, nil, ITEM_SIZE + 2)
@@ -2240,7 +2423,7 @@ function ReforgeLite:CreateOptionList ()
   self.quality.helpButton:SetPoint("BOTTOMLEFT",self.quality.Text, "BOTTOMRIGHT",0,-20)
 
   self.settingsCategory = self:CreateCategory (SETTINGS)
-  self:SetAnchor (self.settingsCategory, "TOPLEFT", self.computeButton, "BOTTOMLEFT", 0, -10)
+  self:SetAnchor (self.settingsCategory, "TOPLEFT", self.computeButton, "BOTTOMLEFT", 0, -10, { ignoreCollapseOffset = true })
   self.settings = GUI:CreateTable (7, 1, nil, 200)
   self.settingsCategory:AddFrame (self.settings)
   self:SetAnchor (self.settings, "TOPLEFT", self.settingsCategory, "BOTTOMLEFT", 0, -5)
@@ -2449,16 +2632,6 @@ function ReforgeLite:FillSettings()
   self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Open window when reforging"],
     self.db.openOnReforge, function (val) self.db.openOnReforge = val end), "LEFT")
 
-  self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Summarize reforged stats"],
-    self.db.updateTooltip,
-    function (val)
-      self.db.updateTooltip = val
-      if val then
-        self:HookTooltipScripts()
-      end
-    end),
-    "LEFT")
-
   self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Enable spec profiles"],
     self.db.specProfiles, function (val)
       self.db.specProfiles = val
@@ -2471,7 +2644,7 @@ function ReforgeLite:FillSettings()
     end),
     "LEFT")
 
-  self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Show import button on Reforging window"],
+  self.settings:SetCell (getOrderId('settings', self.settings), 0, GUI:CreateCheckButton (self.settings, L["Show import button"],
     self.db.importButton, function (val)
       self.db.importButton = val
       if val then
@@ -2552,7 +2725,8 @@ function ReforgeLite:GetMethodAlternativeLabel(index)
   if index == 1 then
     return L["Best Result"]
   end
-  return string.format(L["Alternative %d"], index - 1)
+  local altLabel = L["Alt %d"] or L["Alternative %d"]
+  return string.format(altLabel, index - 1)
 end
 
 function ReforgeLite:SetMethodAlternatives(methods, selectedIndex)
@@ -2648,17 +2822,19 @@ function ReforgeLite:ShowMethodAlternativeTooltip(button)
   GameTooltip:SetText(self:GetMethodAlternativeLabel(button.altIndex))
 
   GameTooltip:AddLine(" ")
-  for _, stat in ipairs(self.itemStats) do
-    local value = stat.mgetter(method)
-    local current = stat.getter()
-    local delta = value - current
-    local r, g, b = 0.9, 0.9, 0.9
-    if delta > 0.01 then
-      r, g, b = 0.6, 1, 0.6
-    elseif delta < -0.01 then
-      r, g, b = 1, 0.4, 0.4
+  for index, stat in ipairs(self.itemStats) do
+    if self:ShouldDisplayStat(index) then
+      local value = stat.mgetter(method)
+      local current = stat.getter()
+      local delta = value - current
+      local r, g, b = 0.9, 0.9, 0.9
+      if delta > 0.01 then
+        r, g, b = 0.6, 1, 0.6
+      elseif delta < -0.01 then
+        r, g, b = 1, 0.4, 0.4
+      end
+      GameTooltip:AddDoubleLine(stat.tip, string.format("%s (%s)", FormatMethodStatValue(value), FormatMethodDelta(value, current)), 1, 1, 1, r, g, b)
     end
-    GameTooltip:AddDoubleLine(stat.tip, string.format("%s (%s)", FormatMethodStatValue(value), FormatMethodDelta(value, current)), 1, 1, 1, r, g, b)
   end
 
   if method.satisfied then
@@ -2695,8 +2871,28 @@ function ReforgeLite:EnsureMethodAlternativeButtons(count)
       button:SetPoint("TOPLEFT")
       button:SetPoint("TOPRIGHT")
     else
-      button:SetPoint("TOPLEFT", self.methodAlternativeButtons[index - 1], "BOTTOMLEFT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
-      button:SetPoint("TOPRIGHT", self.methodAlternativeButtons[index - 1], "BOTTOMRIGHT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+      local altIndex = index - 2
+      if altIndex >= 0 and altIndex < 4 then
+        local column = altIndex % 2
+        local row = floor(altIndex / 2)
+        if column == 0 then
+          if row == 0 then
+            button:SetPoint("TOPLEFT", self.methodAlternativeButtons[1], "BOTTOMLEFT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+          else
+            button:SetPoint("TOPLEFT", self.methodAlternativeButtons[index - 2], "BOTTOMLEFT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+          end
+        else
+          if row == 0 then
+            button:SetPoint("TOPRIGHT", self.methodAlternativeButtons[1], "BOTTOMRIGHT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+          else
+            button:SetPoint("TOPRIGHT", self.methodAlternativeButtons[index - 2], "BOTTOMRIGHT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+          end
+        end
+        button:SetWidth(self.methodAlternativeButtonWidth or METHOD_ALTERNATIVE_BUTTON_MIN_WIDTH)
+      else
+        button:SetPoint("TOPLEFT", self.methodAlternativeButtons[index - 1], "BOTTOMLEFT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+        button:SetPoint("TOPRIGHT", self.methodAlternativeButtons[index - 1], "BOTTOMRIGHT", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+      end
     end
 
     button.bg = button:CreateTexture(nil, "BACKGROUND")
@@ -2715,7 +2911,11 @@ function ReforgeLite:EnsureMethodAlternativeButtons(count)
     button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     button.label:SetPoint("LEFT", 8, 0)
     button.label:SetPoint("RIGHT", -8, 0)
-    button.label:SetJustifyH("LEFT")
+    button.label:SetPoint("TOP", 0, -2)
+    button.label:SetPoint("BOTTOM", 0, 2)
+    button.label:SetJustifyH("CENTER")
+    button.label:SetJustifyV("MIDDLE")
+    button.label:SetWordWrap(false)
 
     button:SetScript("OnEnter", function(btn) self:ShowMethodAlternativeTooltip(btn) end)
     button:SetScript("OnLeave", GameTooltip_Hide)
@@ -2790,14 +2990,22 @@ function ReforgeLite:UpdateMethodCategory()
     self.methodCategory = self:CreateCategory (L["Result"])
     self:SetAnchor (self.methodCategory, "TOPLEFT", self.computeButton, "BOTTOMLEFT", 0, -10)
 
+    self.methodHelpButton = GUI:CreateHelpButton(self.content, L["The Result table shows the stat changes from the optimized reforge.\n\nThe left column shows your total stats after reforging.\n\nThe right column shows how much each stat changed:\n- Green: Stat increased and improved your weighted score\n- Red: Stat decreased and lowered your weighted score\n- Grey: No meaningful change (either unchanged, or changed but weighted score stayed the same)\n\nClick 'Show' to see a detailed breakdown of which items to reforge.\n\nClick 'Reset' to clear the current reforge plan."], {scale = 0.5})
+    self.methodHelpButton:SetPoint("LEFT", self.methodCategory.name, "RIGHT", 4, 0)
+
     self.methodStats = GUI:CreateTable (#self.itemStats - 1, 2, ITEM_SIZE, 60, {0.5, 0.5, 0.5, 1})
     self.methodCategory:AddFrame (self.methodStats)
     self:SetAnchor (self.methodStats, "TOPLEFT", self.methodCategory, "BOTTOMLEFT", 0, -5)
     self.methodStats:SetRowHeight (ITEM_SIZE + 2)
-    self.methodStats:SetColumnWidth (60)
+    self.methodStats.defaultRowHeight = ITEM_SIZE + 2
+
+    local labelMeasure = self.methodStats:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    labelMeasure:Hide()
+    local maxLabelWidth = 0
 
     for i, v in ipairs (self.itemStats) do
-      self.methodStats:SetCellText (i - 1, 0, v.tip, "LEFT")
+      local label = v.resultLabel or v.tip
+      self.methodStats:SetCellText (i - 1, 0, label, "LEFT")
 
       self.methodStats[i] = {}
 
@@ -2810,13 +3018,77 @@ function ReforgeLite:UpdateMethodCategory()
       self.methodStats:SetCell (i - 1, 2, self.methodStats[i].delta)
       self.methodStats[i].delta:SetTextColor (0.7, 0.7, 0.7)
       self.methodStats[i].delta:SetText ("+0")
+
+      labelMeasure:SetText(label or "")
+      local labelWidth = labelMeasure:GetStringWidth() or 0
+      if labelWidth > maxLabelWidth then
+        maxLabelWidth = labelWidth
+      end
     end
+
+    labelMeasure:SetText("")
+    labelMeasure:Hide()
+
+    local labelColumnPadding = 16
+    local labelColumnWidth = math.ceil(maxLabelWidth) + labelColumnPadding
+    local paddingReduction = 6
+    local minimumPadding = 8
+    local reducedWidth = labelColumnWidth - paddingReduction
+    local minimumWidth = math.ceil(maxLabelWidth) + minimumPadding
+    labelColumnWidth = max(minimumWidth, reducedWidth)
+    local valueColumnWidth = 72
+    self.methodStats:SetColumnWidth(0, labelColumnWidth)
+    self.methodStats:SetColumnWidth(1, valueColumnWidth)
+    self.methodStats:SetColumnWidth(2, valueColumnWidth)
+
+    local expertiseLabelCell = self.methodStats.cells and self.methodStats.cells[statIds.EXP - 1] and self.methodStats.cells[statIds.EXP - 1][0]
+    self.expertiseToHitHelpButton = GUI:CreateHelpButton(self.methodStats, L["Your Expertise rating is being converted to spell hit.\n\nIn Mists of Pandaria, casters benefit from Expertise due to it automatically converting to Hit at a 1:1 ratio.\n\nThe Hit value shown above includes this converted Expertise rating.\n\nNote: The character sheet is bugged and doesn't show Expertise converted to spell hit, but the conversion works correctly in combat."], { scale = 0.45 })
+    if expertiseLabelCell then
+      self.expertiseToHitHelpButton:SetPoint("LEFT", expertiseLabelCell, "RIGHT", -8, 0)
+    else
+      self.expertiseToHitHelpButton:SetPoint("LEFT", self.methodStats, "RIGHT", 0, 0)
+    end
+    self.expertiseToHitHelpButton:Hide()
+
+    self.methodStats.visibleRows = {}
 
     self.methodAlternativesContainer = CreateFrame("Frame", nil, self.content)
     self.methodCategory:AddFrame(self.methodAlternativesContainer)
     self:SetAnchor (self.methodAlternativesContainer, "TOPLEFT", self.methodStats, "TOPRIGHT", 10, 0)
     self.methodAlternativesContainer:SetPoint("BOTTOMLEFT", self.methodStats, "BOTTOMRIGHT", 10, 0)
-    self.methodAlternativesContainer:SetWidth(120)
+
+    local alternativeLabelMeasure = self.methodAlternativesContainer:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    alternativeLabelMeasure:Hide()
+
+    local maxButtons = addonTable.MAX_METHOD_ALTERNATIVES or 5
+    local bestLabelWidth = 0
+    local altLabelWidth = 0
+    for index = 1, maxButtons do
+      alternativeLabelMeasure:SetText(self:GetMethodAlternativeLabel(index))
+      local width = alternativeLabelMeasure:GetStringWidth() or 0
+      if index == 1 then
+        bestLabelWidth = width
+      else
+        if width > altLabelWidth then
+          altLabelWidth = width
+        end
+      end
+    end
+
+    alternativeLabelMeasure:SetText("")
+    alternativeLabelMeasure:Hide()
+
+    local baseAltWidth = math.ceil(altLabelWidth) + 16
+    if baseAltWidth < METHOD_ALTERNATIVE_BUTTON_MIN_WIDTH then
+      baseAltWidth = METHOD_ALTERNATIVE_BUTTON_MIN_WIDTH
+    end
+
+    local bestWidth = math.ceil(bestLabelWidth) + 16
+    local containerWidth = math.max(bestWidth, (baseAltWidth * 2) + METHOD_ALTERNATIVE_COLUMN_SPACING)
+    local finalAltWidth = math.max(baseAltWidth, floor((containerWidth - METHOD_ALTERNATIVE_COLUMN_SPACING) / 2))
+
+    self.methodAlternativeButtonWidth = finalAltWidth
+    self.methodAlternativesContainer:SetWidth(containerWidth)
     self.methodAlternativesContainer:Hide()
 
     self.methodAlternativeButtons = {}
@@ -2855,6 +3127,9 @@ function ReforgeLite:UpdateMethodCategory()
 
     self:SetAnchor (self.methodReset, "TOPLEFT", self.methodShow, "TOPRIGHT", 5, 0)
     self:SetAnchor (self.settingsCategory, "TOPLEFT", self.methodShow, "BOTTOMLEFT", 0, -10)
+    if self.settingsCategory.Refresh then
+      self.settingsCategory:Refresh()
+    end
   end
 
   if self.pdb.method and (not self.methodAlternatives or #self.methodAlternatives == 0) then
@@ -2869,34 +3144,130 @@ function ReforgeLite:UpdateMethodCategory()
   self:UpdateContentSize ()
 end
 function ReforgeLite:RefreshMethodStats()
-  if self.pdb.method then
-    self:UpdateMethodStats (self.pdb.method)
+  self:UpdateMethodStatVisibility()
+
+  local method = self.pdb.method
+  if method then
+    self:UpdateMethodStats (method)
   end
-  if self.pdb.method then
-    if self.methodStats then
-      for i, v in ipairs (self.itemStats) do
-        local mvalue = v.mgetter (self.pdb.method)
-        if v.percent then
-          self.methodStats[i].value:SetFormattedText("%.2f%%", mvalue)
-        else
-          self.methodStats[i].value:SetText (mvalue)
+
+  local methodStats = self.methodStats
+  if methodStats then
+    local showHelp = self.db.showHelp ~= false
+    local weights = self.pdb.weights or {}
+    local spiritWeight = weights[statIds.SPIRIT] or 0
+    local spiritConversion = (self.conversion[statIds.SPIRIT] or {})[statIds.HIT]
+    local expertiseConversion = (self.conversion[statIds.EXP] or {})[statIds.HIT]
+    local showExpertiseHelp = false
+
+    for index, stat in ipairs (self.itemStats) do
+      local row = index - 1
+      local baseVisible = methodStats.visibleRows and methodStats.visibleRows[row]
+      if baseVisible == nil then
+        baseVisible = true
+      end
+
+      local statRow = methodStats[index]
+      local methodValue = 0
+      if method and stat.mgetter then
+        methodValue = stat.mgetter (method)
+        if statRow and statRow.value then
+          if stat.percent then
+            statRow.value:SetFormattedText("%.2f%%", methodValue)
+          else
+            statRow.value:SetText (methodValue)
+          end
         end
         local override
-        mvalue = v.mgetter (self.pdb.method, true)
-        local value = v.getter ()
-        if self:GetStatScore (i, mvalue) == self:GetStatScore (i, value) then
+        local compareValue = stat.mgetter (method, true)
+        local currentValue = stat.getter and stat.getter () or 0
+        if self:GetStatScore (index, compareValue) == self:GetStatScore (index, currentValue) then
           override = 0
         end
-        SetTextDelta (self.methodStats[i].delta, mvalue, value, override)
+        if statRow and statRow.delta then
+          SetTextDelta (statRow.delta, compareValue, currentValue, override)
+        end
       end
+
+      if index == statIds.EXP and expertiseConversion and methodValue > 0 then
+        showExpertiseHelp = true
+      end
+
+      local shouldShow = baseVisible
+      if index == statIds.SPIRIT then
+        local hasSpiritStat = methodValue > 0
+        shouldShow = shouldShow and (spiritWeight > 0 or spiritConversion or hasSpiritStat)
+      end
+
+      methodStats:SetRowExpanded(row, shouldShow)
+    end
+
+    if self.expertiseToHitHelpButton then
+      local helpVisible = showHelp and showExpertiseHelp
+      self.expertiseToHitHelpButton:SetShown(helpVisible)
+      self.expertiseToHitHelpButton:SetEnabled(showExpertiseHelp)
     end
   end
+
   self:UpdateMethodChecks()
 end
 
-function ReforgeLite:UpdateContentSize ()
-  self.content:SetHeight (-self:GetFrameY (self.lastElement))
+function ReforgeLite:UpdateContentSize (skipDeferred)
+  if not self.content then
+    return
+  end
+
+  local newHeight
+  local contentTop = self.content and self.content:GetTop()
+
+  local lowestBottom
+  if self.content then
+    local children = { self.content:GetChildren() }
+    for index = 1, #children do
+      local child = children[index]
+      if child and child:IsShown() then
+        local childBottom = child:GetBottom()
+        if childBottom and (not lowestBottom or childBottom < lowestBottom) then
+          lowestBottom = childBottom
+        end
+      end
+    end
+  end
+
+  if contentTop and lowestBottom then
+    newHeight = contentTop - lowestBottom
+  end
+
+  if (not newHeight or newHeight <= 0) and self.lastElement and contentTop then
+    local contentBottom = self.lastElement:GetBottom()
+    if contentBottom then
+      newHeight = contentTop - contentBottom
+    end
+  end
+
+  if not newHeight or newHeight <= 0 then
+    newHeight = -self:GetFrameY (self.lastElement)
+  end
+
+  if newHeight <= 0 then
+    newHeight = 1
+  end
+
+  self.content:SetHeight (newHeight)
   RunNextFrame(function() self:FixScroll() end)
+
+  if not skipDeferred and not self.pendingContentSizeUpdate then
+    -- Tables within the scroll content adjust their heights on the next frame
+    -- via OnUpdateFix callbacks. Queue another measurement after those layouts
+    -- finish so hidden rows from collapsed categories don't leave blank space.
+    self.pendingContentSizeUpdate = true
+    RunNextFrame(function()
+      self.pendingContentSizeUpdate = nil
+      if self.content then
+        self:UpdateContentSize(true)
+      end
+    end)
+  end
 end
 
 function ReforgeLite:GetReforgeTableIndex(src, dst)
@@ -3065,7 +3436,7 @@ local function DeriveItemUpgradeData(item)
   return floor(upgradeLevel + 0.5), baseIlvl
 end
 
-local function CollectItemInfoWithUpgrade(item)
+local function CollectItemInfoWithUpgrade(item, slotId)
   if not item or item:IsItemEmpty() then
     return
   end
@@ -3082,6 +3453,7 @@ local function CollectItemInfoWithUpgrade(item)
     itemId = item:GetItemID(),
     itemGUID = item:GetItemGUID(),
     ilvl = item:GetCurrentItemLevel(),
+    slotId = slotId,
   }
 
   if item:HasItemLocation() then
@@ -3092,6 +3464,7 @@ local function CollectItemInfoWithUpgrade(item)
     local roundedBase = floor(originalIlvl + 0.5)
     itemInfo.baseIlvl = roundedBase
     itemInfo.ilvlBase = roundedBase
+    itemInfo.originalIlvl = roundedBase
   end
   if derivedUpgrade and derivedUpgrade > 0 then
     itemInfo.upgradeLevel = derivedUpgrade
@@ -3115,6 +3488,9 @@ local function CollectItemInfoWithUpgrade(item)
   itemInfo.upgradeLevel = upgradeLevel
   itemInfo.effectiveIlvl = effectiveIlvl
   itemInfo.ilvl = effectiveIlvl
+  if not itemInfo.originalIlvl then
+    itemInfo.originalIlvl = baseIlvl
+  end
 
   return itemInfo, baseIlvl, upgradeLevel
 end
@@ -3133,7 +3509,7 @@ function ReforgeLite:UpdateItems()
     v.itemInfo = v.itemInfo or {}
     local info = v.itemInfo
     if not item:IsItemEmpty() then
-      local itemInfo, baseIlvl, upgradeLevel = CollectItemInfoWithUpgrade(item)
+      local itemInfo, baseIlvl, upgradeLevel = CollectItemInfoWithUpgrade(item, v.slotId)
       if itemInfo then
         CopyItemInfoFields(info, itemInfo)
         info.reforge = GetReforgeID(v.slotId)
@@ -3151,11 +3527,9 @@ function ReforgeLite:UpdateItems()
         v.qualityColor = qualityColor
         v.quality:SetVertexColor(qualityColor.r, qualityColor.g, qualityColor.b)
 
-        local upgradeLevel = info.upgradeLevel or 0
-        local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
-
-        stats = GetItemStats(info, cappedUpgrade) or {}
-        statsOrig = GetItemStats(info, upgradeLevel) or {}
+        local statsSource = GetItemStats(info)
+        statsOrig = CopyTableShallow(statsSource)
+        stats = CopyTableShallow(statsSource)
         if info.reforge then
           local srcId, dstId = unpack(reforgeTable[info.reforge])
           reforgeSrc, reforgeDst = self.itemStats[srcId].name, self.itemStats[dstId].name
@@ -3239,32 +3613,84 @@ function ReforgeLite:UpdateItems()
     end
   end
 
+  self.statColumnShown = self.statColumnShown or {}
   for i, v in ipairs (self.itemStats) do
     local hasData = columnHasData[i]
-    if hasData or not hasAnyData then
-      self.itemTable:SetColumnWidth(i, 55)
-      if self.statHeaders and self.statHeaders[i] then
-        self.statHeaders[i]:Show()
-      end
-      if self.statTotals[i] then
-        self.statTotals[i]:Show()
-      end
-    else
-      self.itemTable:SetColumnWidth(i, 0)
-      if self.statHeaders and self.statHeaders[i] then
-        self.statHeaders[i]:Hide()
-      end
-      if self.statTotals[i] then
-        self.statTotals[i]:Hide()
-      end
-    end
+    local showColumn = hasData or not hasAnyData
+    self.statColumnShown[i] = showColumn
+
     if self.statTotals[i] then
       self.statTotals[i]:SetText(v.getter())
     end
+
+    if showColumn then
+      if self.itemTable.ExpandColumn then
+        self.itemTable:ExpandColumn(i)
+      else
+        local defaultWidth = (self.itemTable.defaultColumnWidth and self.itemTable.defaultColumnWidth[i]) or 45
+        local minWidth = self.itemTable.minColumnWidth and self.itemTable.minColumnWidth[i] or 0
+        self.itemTable:SetColumnWidth(i, max(defaultWidth, minWidth))
+      end
+      if self.itemTable.AutoSizeColumns then
+        self.itemTable:AutoSizeColumns(i)
+      end
+      if self.statHeaders and self.statHeaders[i] then
+        self.statHeaders[i]:Show()
+        if self.statHeaders[i].SetAlpha then
+          self.statHeaders[i]:SetAlpha(1)
+        end
+      end
+      if self.statTotals[i] then
+        self.statTotals[i]:Show()
+        if self.statTotals[i].SetAlpha then
+          self.statTotals[i]:SetAlpha(1)
+        end
+      end
+    else
+      if self.itemTable.CollapseColumn then
+        self.itemTable:CollapseColumn(i)
+      else
+        self.itemTable:SetColumnWidth(i, 0)
+      end
+      if self.statHeaders and self.statHeaders[i] then
+        if self.statHeaders[i].Hide then
+          self.statHeaders[i]:Hide()
+        else
+          self.statHeaders[i]:SetAlpha(0)
+        end
+      end
+      if self.statTotals[i] then
+        if self.statTotals[i].Hide then
+          self.statTotals[i]:Hide()
+        else
+          self.statTotals[i]:SetAlpha(0)
+        end
+      end
+    end
   end
 
+  self.statColumnShownInitialized = true
+
+  self:UpdateMethodStatVisibility()
+
   local _, minHeight, maxWidth, maxHeight = self:GetResizeBounds()
-  local minWidth = self.itemTable:GetWidth() + 10 + 400 + 22
+  local methodStatsWidth = self.methodStats and self.methodStats:GetWidth() or 0
+  if not methodStatsWidth or methodStatsWidth <= 0 then
+    methodStatsWidth = 280
+  end
+  local alternativesWidth = 0
+  if self.methodAlternativesContainer and self.methodAlternativesContainer:GetWidth() then
+    alternativesWidth = self.methodAlternativesContainer:GetWidth()
+  end
+  if alternativesWidth < 0 then
+    alternativesWidth = 0
+  end
+  local methodSpacing = (alternativesWidth > 0) and 10 or 0
+  local methodPanelWidth = methodStatsWidth + methodSpacing + alternativesWidth
+  if methodPanelWidth <= 0 then
+    methodPanelWidth = 400
+  end
+  local minWidth = self.itemTable:GetWidth() + 10 + methodPanelWidth + 22
   self:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight)
   if self:GetWidth() < minWidth then
     self:SetWidth(minWidth)
@@ -3280,6 +3706,70 @@ function ReforgeLite:UpdateItems()
     end
   end
   self:RefreshMethodStats()
+end
+
+function ReforgeLite:DoesMethodUseStat(statIndex)
+  local method = self.pdb and self.pdb.method
+  if not method or not method.items then
+    return false
+  end
+
+  for _, slotInfo in ipairs(method.items) do
+    if slotInfo and slotInfo.reforge and (slotInfo.src == statIndex or slotInfo.dst == statIndex) then
+      return true
+    end
+  end
+
+  return false
+end
+
+function ReforgeLite:ShouldDisplayStat(statIndex)
+  if not statIndex or statIndex <= 0 then
+    return false
+  end
+
+  if not self.statColumnShownInitialized then
+    return true
+  end
+
+  if self.statColumnShown and self.statColumnShown[statIndex] then
+    return true
+  end
+
+  return self:DoesMethodUseStat(statIndex)
+end
+
+function ReforgeLite:UpdateMethodStatVisibility()
+  if not self.methodStats then
+    return
+  end
+
+  self.methodStats.visibleRows = self.methodStats.visibleRows or {}
+
+  for index = 1, #self.itemStats do
+    local shouldShow = self:ShouldDisplayStat(index)
+    local row = index - 1
+    local changed = self.methodStats.visibleRows[row] ~= shouldShow
+    self.methodStats.visibleRows[row] = shouldShow
+    self.methodStats:SetRowExpanded(row, shouldShow)
+
+    if changed then
+      local labelCell = self.methodStats.cells and self.methodStats.cells[row] and self.methodStats.cells[row][0]
+      if labelCell then
+        labelCell:SetShown(shouldShow)
+      end
+
+      local statRow = self.methodStats[index]
+      if statRow then
+        if statRow.value then
+          statRow.value:SetShown(shouldShow)
+        end
+        if statRow.delta then
+          statRow.delta:SetShown(shouldShow)
+        end
+      end
+    end
+  end
 end
 
 function ReforgeLite:UpdatePlayerSpecInfo()
@@ -3326,25 +3816,24 @@ local queueUpdateEvents = {
   UNIT_SPELL_HASTE = "player",
 }
 
-local queueEventsRegistered = false
 function ReforgeLite:RegisterQueueUpdateEvents()
-  if queueEventsRegistered then return end
   for event, unitID in pairs(queueUpdateEvents) do
-    if unitID == true then
-      self:RegisterEvent(event)
-    else
-      self:RegisterUnitEvent(event, unitID)
+    if not self:IsEventRegistered(event) then
+      if unitID == true then
+        self:RegisterEvent(event)
+      else
+        self:RegisterUnitEvent(event, unitID)
+      end
     end
   end
-  queueEventsRegistered = true
 end
 
 function ReforgeLite:UnregisterQueueUpdateEvents()
-  if not queueEventsRegistered then return end
   for event in pairs(queueUpdateEvents) do
-    self:UnregisterEvent(event)
+    if self:IsEventRegistered(event) then
+      self:UnregisterEvent(event)
+    end
   end
-  queueEventsRegistered = false
 end
 
 function ReforgeLite:QueueUpdate()
@@ -3522,7 +4011,7 @@ function ReforgeLite:RefreshMethodWindow()
     local item = PLAYER_ITEM_DATA[v.slotId]
     if not item:IsItemEmpty() then
       v.itemInfo = v.itemInfo or {}
-      local itemInfo = CollectItemInfoWithUpgrade(item)
+      local itemInfo = CollectItemInfoWithUpgrade(item, v.slotId)
       CopyItemInfoFields(v.itemInfo, itemInfo)
       v.itemInfo.reforge = GetReforgeID(v.slotId)
 
@@ -3589,7 +4078,7 @@ function ReforgeLite:UpdateMethodChecks ()
           local windowItem = self.methodWindow.items[index]
           if not item:IsItemEmpty() then
             windowItem.itemInfo = windowItem.itemInfo or {}
-            local itemInfo = CollectItemInfoWithUpgrade(item)
+            local itemInfo = CollectItemInfoWithUpgrade(item, slotData.slotId)
             CopyItemInfoFields(windowItem.itemInfo, itemInfo)
             windowItem.itemInfo.reforge = GetReforgeID(slotData.slotId)
             windowItem.item = windowItem.itemInfo.link
@@ -3723,9 +4212,7 @@ function ReforgeLite:DoReforgeUpdate()
           local reforgeItemInfo = slotInfo.itemInfo or self.itemData[slotId].itemInfo
           local stats = {}
           if reforgeItemInfo and reforgeItemInfo.link then
-            local upgradeLevel = reforgeItemInfo.upgradeLevel or 0
-            local cappedUpgrade = GetCappedUpgradeLevel(reforgeItemInfo.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
-            stats = GetItemStats(reforgeItemInfo, cappedUpgrade) or {}
+            stats = GetItemStats(reforgeItemInfo) or {}
           end
           for s, reforgeInfo in ipairs(reforgeTable) do
             local srcstat, dststat = unpack(reforgeInfo)
@@ -3748,40 +4235,6 @@ function ReforgeLite:DoReforgeUpdate()
 end
 
 --------------------------------------------------------------------------
-
-local function HandleTooltipUpdate(tip)
-  if not ReforgeLite.db.updateTooltip then return end
-  local _, item = tip:GetItem()
-  if not item then return end
-  local reforgeId = GetReforgeIDFromString(item)
-  if not reforgeId then return end
-  for _, region in pairs({tip:GetRegions()}) do
-    if region:GetObjectType() == "FontString" and region:GetText() == REFORGED then
-      local srcId, destId = unpack(reforgeTable[reforgeId])
-      region:SetFormattedText("%s (%s > %s)", REFORGED, ReforgeLite.itemStats[srcId].long, ReforgeLite.itemStats[destId].long)
-      return
-    end
-  end
-end
-
-function ReforgeLite:HookTooltipScripts()
-  if self.tooltipsHooked then return end
-  local tooltips = {
-    "GameTooltip",
-    "ShoppingTooltip1",
-    "ShoppingTooltip2",
-    "ItemRefTooltip",
-    "ItemRefShoppingTooltip1",
-    "ItemRefShoppingTooltip2",
-  }
-  for _, tooltipName in ipairs(tooltips) do
-    local tooltip = _G[tooltipName]
-    if tooltip then
-      tooltip:HookScript("OnTooltipSetItem", HandleTooltipUpdate)
-    end
-  end
-  self.tooltipsHooked = true
-end
 
 --------------------------------------------------------------------------
 
@@ -3852,21 +4305,25 @@ end
 
 local currentSpec -- hack because this event likes to fire twice
 function ReforgeLite:ACTIVE_TALENT_GROUP_CHANGED(curr)
+  if not currentSpec then
+    currentSpec = curr
+  end
   if currentSpec ~= curr then
     currentSpec = curr
     self:SwapSpecProfiles()
   end
 end
 
-function ReforgeLite:PLAYER_SPECIALIZATION_CHANGED(unitId)
-  if unitId == 'player' then
-    self:GetConversion()
-    self:UpdatePlayerSpecInfo()
-  end
+function ReforgeLite:PLAYER_SPECIALIZATION_CHANGED()
+  self:GetConversion()
+  self:UpdatePlayerSpecInfo()
 end
 
 function ReforgeLite:PLAYER_ENTERING_WORLD()
   self:GetConversion()
+  if not currentSpec then
+    currentSpec = C_SpecializationInfo.GetActiveSpecGroup()
+  end
 end
 
 local ILVL_DISPLAY_FORMAT = "iLvl: %d"
@@ -3879,6 +4336,8 @@ function ReforgeLite:ADDON_LOADED (addon)
   if addon ~= addonName then return end
   self:Hide()
   self:UpgradeDB()
+
+  RefreshItemStatLabels()
 
   local db = LibStub("AceDB-3.0"):New(addonName.."DB", DefaultDB)
 
@@ -3910,9 +4369,6 @@ function ReforgeLite:ADDON_LOADED (addon)
     end,
   })
 
-  if self.db.updateTooltip then
-    self:HookTooltipScripts()
-  end
   self:RegisterEvent("FORGE_MASTER_OPENED")
   self:RegisterEvent("FORGE_MASTER_CLOSED")
   self:RegisterEvent("PLAYER_REGEN_DISABLED")

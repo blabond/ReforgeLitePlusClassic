@@ -1,6 +1,4 @@
 local _, addonTable = ...
-if addonTable.Locale ~= "esMX" then return end
-
 local L = addonTable.L
 
 L["%s does not match your currently equipped %s. ReforgeLite only supports equipped items."] = "%s no coincide con tu %s equipado actualmente. ReforgeLite solo admite elementos equipados."
@@ -15,6 +13,7 @@ L["At most"] = "Como maximo"
 --[[Translation missing --]]
 --[[ L["Bearweave"] = ""--]] 
 L["Best Result"] = "Mejor resultado"
+L["Alt %d"] = "Alt %d"
 --[[Translation missing --]]
 --[[ L["Buffs"] = ""--]] 
 L["Cap value"] = "Valor de cap"

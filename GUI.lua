@@ -364,7 +364,8 @@ function GUI:CreateDropdown (parent, values, options)
       for _, v in ipairs(list) do
         if v.value == value then
           if dropdown.Text then
-            dropdown.Text:SetText(v.name)
+            local name = GetValueOrCallFunction(v, "name")
+            dropdown.Text:SetText(name or "")
           end
           return
         end
@@ -405,14 +406,15 @@ function GUI:CreateDropdown (parent, values, options)
     end
     for _, item in ipairs(list) do
       if not (dropdown.menuItemHidden and dropdown.menuItemHidden(item)) then
-        local button = rootDescription:CreateRadio(item.name, function()
+        local name = GetValueOrCallFunction(item, "name") or ""
+        local button = rootDescription:CreateRadio(name, function()
           return dropdown.value == item.value
         end, function()
           local oldValue = dropdown.value
           dropdown.value = item.value
           dropdown.selectedValue = item.value
           if dropdown.Text then
-            dropdown.Text:SetText(item.name)
+            dropdown.Text:SetText(name)
           end
           if dropdown.setter then
             dropdown.setter(dropdown, item.value, oldValue)
@@ -1031,6 +1033,237 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
     self:AlignCell (i, j)
     self:AutoSizeColumns(j)
   end
+  t.CollapseRow = function(self, i)
+    if not self.rowHeight or i < 0 or i > self.rows then
+      return
+    end
+    if not self.collapsedRows then
+      self.collapsedRows = {}
+    end
+    if self.collapsedRows[i] then
+      return
+    end
+    local originalHeight = self.rowHeight[i]
+    if not originalHeight or originalHeight == 0 then
+      originalHeight = self.defaultRowHeight or "AUTO"
+    end
+    self.collapsedRows[i] = originalHeight
+    self.rowHeight[i] = 0
+    if self.cells[i] then
+      for j = 0, self.cols do
+        if self.cells[i][j] then
+          self.cells[i][j]:SetAlpha(0)
+        end
+      end
+    end
+    self:OnUpdateFix()
+  end
+  t.ExpandRow = function(self, i)
+    if not (self.collapsedRows and self.collapsedRows[i]) then
+      return
+    end
+    local restoredHeight = self.collapsedRows[i]
+    if restoredHeight == "AUTO" then
+      restoredHeight = "AUTO"
+    elseif type(restoredHeight) ~= "number" or restoredHeight <= 0 then
+      restoredHeight = self.defaultRowHeight or self.rowHeight[i] or "AUTO"
+    end
+    self.rowHeight[i] = restoredHeight
+    self.collapsedRows[i] = nil
+    if self.cells[i] then
+      for j = 0, self.cols do
+        if self.cells[i][j] then
+          self.cells[i][j]:SetAlpha(1)
+        end
+      end
+    end
+    self:OnUpdateFix()
+  end
+  t.SetRowExpanded = function(self, i, expanded)
+    if expanded then
+      self:ExpandRow(i)
+    else
+      self:CollapseRow(i)
+    end
+  end
+
+  t.CollapseColumn = function(self, j)
+    if not j or j < 0 or j > self.cols then
+      return
+    end
+
+    self.collapsedColumns = self.collapsedColumns or {}
+    if not self.collapsedColumns[j] then
+      local storedWidth = self.colWidth[j]
+      if storedWidth == nil or storedWidth == "AUTO" or storedWidth <= 0 then
+        storedWidth = self:GetColumnWidth(j)
+      end
+      if type(storedWidth) ~= "number" or storedWidth <= 0 then
+        local defaultWidth = self.defaultColumnWidth and self.defaultColumnWidth[j]
+        if type(defaultWidth) == "number" and defaultWidth > 0 then
+          storedWidth = defaultWidth
+        else
+          storedWidth = 0
+        end
+      end
+      self.collapsedColumns[j] = storedWidth
+    end
+
+    self.colWidth[j] = 0
+    for rowIndex = -1, self.rows do
+      local row = self.cells[rowIndex]
+      if row then
+        local cell = row[j]
+        if cell then
+          if cell.Hide then
+            cell:Hide()
+          elseif cell.SetAlpha then
+            cell:SetAlpha(0)
+          end
+        end
+      end
+    end
+    self:OnUpdateFix()
+  end
+
+  t.ExpandColumn = function(self, j)
+    if not j or j < 0 or j > self.cols then
+      return
+    end
+
+    local storedWidth
+    if self.collapsedColumns then
+      storedWidth = self.collapsedColumns[j]
+      self.collapsedColumns[j] = nil
+    end
+
+    if type(storedWidth) ~= "number" or storedWidth <= 0 then
+      if self.defaultColumnWidth and self.defaultColumnWidth[j] then
+        storedWidth = self.defaultColumnWidth[j]
+      elseif self.minColumnWidth and self.minColumnWidth[j] then
+        storedWidth = self.minColumnWidth[j]
+      elseif type(self.colWidth[j]) == "number" and self.colWidth[j] > 0 then
+        storedWidth = self.colWidth[j]
+      else
+        storedWidth = nil
+      end
+    end
+
+    if storedWidth and storedWidth > 0 then
+      self.colWidth[j] = storedWidth
+    elseif self.autoWidthColumns and self.autoWidthColumns[j] then
+      self.colWidth[j] = self.colWidth[j] == 0 and "AUTO" or self.colWidth[j]
+    end
+
+    for rowIndex = -1, self.rows do
+      local row = self.cells[rowIndex]
+      if row then
+        local cell = row[j]
+        if cell then
+          if cell.Show then
+            cell:Show()
+          elseif cell.SetAlpha then
+            cell:SetAlpha(1)
+          end
+        end
+      end
+    end
+
+    if self.autoWidthColumns and self.autoWidthColumns[j] then
+      self:AutoSizeColumns(j)
+    else
+      self:OnUpdateFix()
+    end
+  end
+
+  t.CollapseColumn = function(self, j)
+    if not j or j < 0 or j > self.cols then
+      return
+    end
+
+    self.collapsedColumns = self.collapsedColumns or {}
+    if not self.collapsedColumns[j] then
+      local storedWidth = self.colWidth[j]
+      if storedWidth == nil or storedWidth == "AUTO" or storedWidth <= 0 then
+        storedWidth = self:GetColumnWidth(j)
+      end
+      if type(storedWidth) ~= "number" or storedWidth <= 0 then
+        local defaultWidth = self.defaultColumnWidth and self.defaultColumnWidth[j]
+        if type(defaultWidth) == "number" and defaultWidth > 0 then
+          storedWidth = defaultWidth
+        else
+          storedWidth = 0
+        end
+      end
+      self.collapsedColumns[j] = storedWidth
+    end
+
+    self.colWidth[j] = 0
+    for rowIndex = -1, self.rows do
+      local row = self.cells[rowIndex]
+      if row then
+        local cell = row[j]
+        if cell then
+          if cell.Hide then
+            cell:Hide()
+          elseif cell.SetAlpha then
+            cell:SetAlpha(0)
+          end
+        end
+      end
+    end
+    self:OnUpdateFix()
+  end
+
+  t.ExpandColumn = function(self, j)
+    if not j or j < 0 or j > self.cols then
+      return
+    end
+
+    local storedWidth
+    if self.collapsedColumns then
+      storedWidth = self.collapsedColumns[j]
+      self.collapsedColumns[j] = nil
+    end
+
+    if type(storedWidth) ~= "number" or storedWidth <= 0 then
+      if self.defaultColumnWidth and self.defaultColumnWidth[j] then
+        storedWidth = self.defaultColumnWidth[j]
+      elseif self.minColumnWidth and self.minColumnWidth[j] then
+        storedWidth = self.minColumnWidth[j]
+      elseif type(self.colWidth[j]) == "number" and self.colWidth[j] > 0 then
+        storedWidth = self.colWidth[j]
+      else
+        storedWidth = nil
+      end
+    end
+
+    if storedWidth and storedWidth > 0 then
+      self.colWidth[j] = storedWidth
+    elseif self.autoWidthColumns and self.autoWidthColumns[j] then
+      self.colWidth[j] = self.colWidth[j] == 0 and "AUTO" or self.colWidth[j]
+    end
+
+    for rowIndex = -1, self.rows do
+      local row = self.cells[rowIndex]
+      if row then
+        local cell = row[j]
+        if cell then
+          if cell.Show then
+            cell:Show()
+          elseif cell.SetAlpha then
+            cell:SetAlpha(1)
+          end
+        end
+      end
+    end
+
+    if self.autoWidthColumns and self.autoWidthColumns[j] then
+      self:AutoSizeColumns(j)
+    else
+      self:OnUpdateFix()
+    end
+  end
 
   return t
 end
@@ -1055,6 +1288,8 @@ function GUI.CreateStaticPopup(name, text, options, legacyOpts)
     hasEditBox = true
   end
 
+  local dialogWidth = opts.dialogWidth
+  local dialogWidthPadding = opts.dialogWidthPadding
   StaticPopupDialogs[name] = {
     text = text,
     button1 = opts.button1 or ACCEPT,
@@ -1069,6 +1304,16 @@ function GUI.CreateStaticPopup(name, text, options, legacyOpts)
     end,
     OnShow = function(self)
       local editBox = self:GetEditBox()
+      local desiredWidth = dialogWidth
+      if not desiredWidth and dialogWidthPadding and editBox then
+        desiredWidth = editBox:GetWidth() + dialogWidthPadding
+      end
+      if desiredWidth then
+        self:SetWidth(desiredWidth)
+        if self.text then
+          self.text:SetWidth(math.max(desiredWidth - 40, 0))
+        end
+      end
       if editBox and hasEditBox then
         editBox:SetFocus()
         self:GetButton1():Disable()

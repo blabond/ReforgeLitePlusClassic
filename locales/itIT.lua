@@ -1,6 +1,4 @@
 local _, addonTable = ...
-if addonTable.Locale ~= "itIT" then return end
-
 local L = addonTable.L
 
 --[[Translation missing --]]

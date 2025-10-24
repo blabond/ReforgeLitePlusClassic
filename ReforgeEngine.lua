@@ -19,8 +19,9 @@ local function GetMaxMethodAlternatives()
   return addonTable.MAX_METHOD_ALTERNATIVES or 5
 end
 
-local GetItemStats = addonTable.SafeGetItemStats or addonTable.GetItemStatsUp
-local GetCappedUpgradeLevel = addonTable.GetCappedUpgradeLevel
+local CopyTableShallow = addonTable.CopyTableShallow
+
+local GetItemStats = addonTable.GetItemStatsFromTooltip
 local TABLE_SIZE = 10000
 local MAX_CORE_STATES = addonTable.MAX_CORE_STATES or 4000
 local CORE_SPEED_PRESET_MULTIPLIERS = addonTable.CORE_SPEED_PRESET_MULTIPLIERS or {
@@ -169,7 +170,6 @@ function ReforgeLite:GetStatMultipliers()
   return result
 end
 
-local CASTER_SPEC_noSpiritHit = {}
 local CASTER_SPEC = {[statIds.EXP] = {[statIds.HIT] = 1}}
 local HYBRID_SPEC = {[statIds.SPIRIT] = {[statIds.HIT] = 1}, [statIds.EXP] = {[statIds.HIT] = 1}}
 local STAT_CONVERSIONS = {
@@ -179,7 +179,7 @@ local STAT_CONVERSIONS = {
       [4] = CASTER_SPEC -- Resto
     }
   },
-  MAGE = { base = CASTER_SPEC_noSpiritHit },
+  MAGE = { base = CASTER_SPEC },
   MONK = {
     specs = {
       [SPEC_MONK_MISTWEAVER] = {
@@ -205,7 +205,7 @@ local STAT_CONVERSIONS = {
       [SPEC_SHAMAN_RESTORATION] = CASTER_SPEC -- Resto
     }
   },
-  WARLOCK = { base = CASTER_SPEC_noSpiritHit },
+  WARLOCK = { base = CASTER_SPEC },
 }
 
 function ReforgeLite:GetConversion()
@@ -245,10 +245,9 @@ function ReforgeLite:UpdateMethodStats (method)
     local info = slotData.itemInfo
     local orgstats, stats = {}, {}
     if info and info.link then
-      local upgradeLevel = info.upgradeLevel or 0
-      local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
-      orgstats = GetItemStats(info, upgradeLevel) or {}
-      stats = GetItemStats(info, cappedUpgrade) or {}
+      local statsSource = CopyTableShallow(GetItemStats(info) or {})
+      stats = statsSource
+      orgstats = CopyTableShallow(statsSource)
     end
     local reforge = info and info.reforge
 
@@ -470,10 +469,9 @@ function ReforgeLite:InitializeMethod()
     local info = self.itemData[i].itemInfo
     local stats, orgstats = {}, {}
     if info and info.link then
-      local upgradeLevel = info.upgradeLevel or 0
-      local cappedUpgrade = GetCappedUpgradeLevel(info.baseIlvl, upgradeLevel, self.pdb.ilvlCap)
-      stats = GetItemStats(info, cappedUpgrade) or {}
-      orgstats = GetItemStats(info, upgradeLevel) or {}
+      local statsSource = GetItemStats(info) or {}
+      stats = CopyTableShallow(statsSource)
+      orgstats = CopyTableShallow(statsSource)
     end
     for j, v in ipairs(self.itemStats) do
       method.items[i].stats[j] = (stats[v.name] or 0)

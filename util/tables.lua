@@ -42,3 +42,15 @@ local function DeepCopy(value, cache)
     return copy
 end
 addonTable.DeepCopy = DeepCopy
+
+local function CopyTableShallow(tbl)
+    local copy = {}
+    if type(tbl) == "table" then
+        for key, value in pairs(tbl) do
+            copy[key] = value
+        end
+    end
+
+    return copy
+end
+addonTable.CopyTableShallow = CopyTableShallow

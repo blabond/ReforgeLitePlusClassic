@@ -1,12 +1,9 @@
 local _, addonTable = ...
-addonTable.Locale = GetLocale()
-addonTable.L = setmetatable({}, {
-  __index = function(self, key)
-    rawset(self, key, key or "")
-    return self[key]
-end})
 
 local L = addonTable.L
+
+addonTable.WEIGHT_HIT_LABEL = HIT
+addonTable.RESULT_HIT_LABEL = HIT
 
 L["%s does not match your currently equipped %s. ReforgeLite only supports equipped items."] = "%s does not match your currently equipped %s. ReforgeLite only supports equipped items."
 L["%s does not match your currently equipped %s: %s. ReforgeLite only supports equipped items."] = "%s does not match your currently equipped %s: %s. ReforgeLite only supports equipped items."
@@ -18,6 +15,7 @@ L["At least"] = "At least"
 L["At most"] = "At most"
 L["Bearweave"] = "Bearweave"
 L["Best Result"] = "Best Result"
+L["Alt %d"] = "Alt %d"
 L["Alternative %d"] = "Alternative %d"
 L["Alternative results to display"] = "Alternative results to display"
 L["All caps satisfied"] = "All caps satisfied"
@@ -61,6 +59,7 @@ L["Remove cap"] = "Remove cap"
 L["Result"] = "Result"
 L["Score"] = "Score"
 L["Show reforged stats in item tooltips"] = "Show reforged stats in item tooltips"
+L["Show import button"] = "Show import button"
 L["Show help buttons"] = "Show help buttons"
 L["Slide to the left if the calculation slows your game too much."] = "Slide to the left if the calculation slows your game too much."
 L["Source stat color"] = "Source stat color"
@@ -73,7 +72,6 @@ L["Fast"] = "Fast (reduced accuracy)"
 L["Normal"] = "Normal (highest accuracy)"
 L["Stat Weights"] = "Stat Weights"
 L["Sum"] = "Sum"
-L["Summarize reforged stats"] = "Summarize reforged stats"
 L["Tanking model"] = "Tanking model"
 L["ticks"] = "ticks"
 L["Weight after cap"] = "Weight after cap"
