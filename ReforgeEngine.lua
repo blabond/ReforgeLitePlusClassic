@@ -156,6 +156,108 @@ end
 
 ---------------------------------------------------------------------------------------
 
+local function RunReforge(self, overrides)
+  local previousOverrides = self.__reforgeOverrides
+  self.__reforgeOverrides = overrides
+
+  local data = self:InitReforgeClassic()
+
+  self.__reforgeOverrides = previousOverrides
+
+  local reforgeOptions = {}
+  for i = 1, #self.itemData do
+    reforgeOptions[i] = self:GetItemReforgeOptions(data.method.items[i], data, i)
+  end
+
+  self.__chooseLoops = nil
+
+  local scores, codes = self:ComputeReforgeCore(data, reforgeOptions)
+
+  self.__chooseLoops = nil
+
+  local alternatives = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes)
+  scores, codes = nil, nil
+  collectgarbage("collect")
+
+  if not alternatives or #alternatives == 0 then
+    return {}
+  end
+
+  local methods = {}
+  for index, entry in ipairs(alternatives) do
+    local methodCopy = DeepCopy(data.method)
+    local code = entry.code
+    for i = 1, #methodCopy.items do
+      local opt = reforgeOptions[i][code:byte(i)]
+      if data.conv[statIds.SPIRIT] and data.conv[statIds.SPIRIT][statIds.HIT] == 1 then
+        if opt.dst == statIds.HIT and methodCopy.items[i].stats[statIds.SPIRIT] == 0 then
+          opt.dst = statIds.SPIRIT
+        end
+      end
+      methodCopy.items[i].src = opt.src
+      methodCopy.items[i].dst = opt.dst
+    end
+
+    self:FinalizeReforge({ method = methodCopy })
+
+    methodCopy.isPlaceholder = nil
+    methodCopy.score = entry.score
+    methodCopy.priority = entry.priority
+    methodCopy.satisfied = CopyArray(entry.satisfied)
+    methodCopy.code = entry.code
+    if overrides and overrides.disableConversions and overrides.disableConversions[statIds.EXP] then
+      methodCopy.ignoresExpertiseConversion = true
+    end
+    methods[index] = methodCopy
+  end
+
+  return methods
+end
+
+local function CombineReforgeMethods(baseList, expertiseList)
+  local maxAlternatives = GetMaxMethodAlternatives()
+  local combined = {}
+  local seenCodes = {}
+
+  local function addMethod(method)
+    if not method then
+      return false
+    end
+    local code = method.code
+    if code and not seenCodes[code] then
+      table.insert(combined, method)
+      seenCodes[code] = true
+      if maxAlternatives and #combined >= maxAlternatives then
+        return true
+      end
+    end
+    return false
+  end
+
+  local baseHasEntries = baseList and #baseList > 0
+  if baseHasEntries then
+    addMethod(baseList[1])
+  end
+
+  if expertiseList then
+    for _, method in ipairs(expertiseList) do
+      if addMethod(method) and maxAlternatives and #combined >= maxAlternatives then
+        return combined
+      end
+    end
+  end
+
+  if baseHasEntries then
+    for index = 2, #baseList do
+      if addMethod(baseList[index]) and maxAlternatives and #combined >= maxAlternatives then
+        return combined
+      end
+    end
+  end
+
+  return combined
+end
+
 function ReforgeLite:GetStatMultipliers()
   local result = {}
   for _, v in ipairs(self.itemData) do
@@ -210,6 +312,7 @@ local STAT_CONVERSIONS = {
 
 function ReforgeLite:GetConversion()
   self.conversion = wipe(self.conversion or {})
+  self.conversionInitialized = true
 
   local classConversionInfo = STAT_CONVERSIONS[playerClass]
   if classConversionInfo then
@@ -260,10 +363,10 @@ function ReforgeLite:UpdateMethodStats (method)
       method.stats[s] = method.stats[s] - (orgstats[v.name] or 0) + (stats[v.name] or 0)
     end
     if reforge then
-      local src, dst = unpack(self.reforgeTable[reforge])
-      local amount = floor ((orgstats[self.itemStats[src].name] or 0) * REFORGE_COEFF)
-      method.stats[src] = method.stats[src] + amount
-      method.stats[dst] = method.stats[dst] - amount
+      local srcIndex, dstIndex = unpack(self.reforgeTable[reforge])
+      local amount = floor ((orgstats[self.itemStats[srcIndex].name] or 0) * REFORGE_COEFF)
+      method.stats[srcIndex] = method.stats[srcIndex] + amount
+      method.stats[dstIndex] = method.stats[dstIndex] - amount
     end
     if method.items[i].src and method.items[i].dst then
       method.items[i].amount = floor ((stats[self.itemStats[method.items[i].src].name] or 0) * REFORGE_COEFF)
@@ -301,7 +404,8 @@ function ReforgeLite:ResetMethod ()
     local info = self.itemData[i].itemInfo
     if info and info.reforge then
       method.items[i].reforge = info.reforge
-      method.items[i].src, method.items[i].dst = unpack(self.reforgeTable[info.reforge])
+      local srcIndex, dstIndex = unpack(self.reforgeTable[info.reforge])
+      method.items[i].src, method.items[i].dst = srcIndex, dstIndex
     end
   end
   method.isPlaceholder = true
@@ -420,12 +524,12 @@ end
 
 function ReforgeLite:GetItemReforgeOptions (item, data, slot)
   if self:IsItemLocked (slot) then
-    local src, dst = nil, nil
+    local srcIndex, dstIndex = nil, nil
     local info = self.itemData[slot].itemInfo
     if info and info.reforge then
-      src, dst = unpack(self.reforgeTable[info.reforge])
+      srcIndex, dstIndex = unpack(self.reforgeTable[info.reforge])
     end
-    local option = self:MakeReforgeOption(item, data, src, dst, true)
+    local option = self:MakeReforgeOption(item, data, srcIndex, dstIndex, true)
     if not option then
       option = self:MakeReforgeOption(item, data)
     end
@@ -436,11 +540,11 @@ function ReforgeLite:GetItemReforgeOptions (item, data, slot)
   if baseOption then
     aopt[EncodeState(baseOption.deltas)] = baseOption
   end
-  for src = 1, #self.itemStats do
-    if item.stats[src] > 0 then
-      for dst = 1, #self.itemStats do
-        if item.stats[dst] == 0 then
-          local o = self:MakeReforgeOption (item, data, src, dst)
+  for srcIndex = 1, #self.itemStats do
+    if item.stats[srcIndex] > 0 then
+      for dstIndex = 1, #self.itemStats do
+        if item.stats[dstIndex] == 0 then
+          local o = self:MakeReforgeOption (item, data, srcIndex, dstIndex)
           if o then
             local pos = EncodeState(o.deltas)
             if not aopt[pos] or aopt[pos].score < o.score then
@@ -483,10 +587,20 @@ function ReforgeLite:InitializeMethod()
 end
 
 function ReforgeLite:InitReforgeClassic()
+  local overrides = self.__reforgeOverrides
+  local overrideWeights = overrides and overrides.weights
+  local disabledConversions = overrides and overrides.disableConversions
+  local skipConversionWeightAdjustment = (overrides and overrides.skipConversionWeightAdjustment) or {}
+
   local method, orgitems, statsSum = self:InitializeMethod()
   local data = {}
   data.method = method
   data.weights = DeepCopy (self.pdb.weights)
+  if overrideWeights then
+    for statId, value in pairs(overrideWeights) do
+      data.weights[statId] = value
+    end
+  end
   data.caps = DeepCopy (self.pdb.caps)
   while #data.caps > NUM_CAPS do
     table.remove(data.caps)
@@ -500,6 +614,11 @@ function ReforgeLite:InitReforgeClassic()
 
   data.mult = self:GetStatMultipliers()
   data.conv = DeepCopy(self.conversion)
+  if disabledConversions then
+    for statId in pairs(disabledConversions) do
+      data.conv[statId] = nil
+    end
+  end
 
   for i = 1, NUM_CAPS do
     for point = 1, #data.caps[i].points do
@@ -536,12 +655,12 @@ function ReforgeLite:InitReforgeClassic()
     local info = self.itemData[i].itemInfo
     local reforge = info and info.reforge
     if reforge then
-      local src, dst = unpack(self.reforgeTable[reforge])
-      local amount = floor (method.items[i].stats[src] * REFORGE_COEFF)
-      data.initial[src] = data.initial[src] + amount
-      data.initial[dst] = data.initial[dst] - amount
-      reforged[src] = reforged[src] - amount
-      reforged[dst] = reforged[dst] + amount
+      local srcIndex, dstIndex = unpack(self.reforgeTable[reforge])
+      local amount = floor (method.items[i].stats[srcIndex] * REFORGE_COEFF)
+      data.initial[srcIndex] = data.initial[srcIndex] + amount
+      data.initial[dstIndex] = data.initial[dstIndex] - amount
+      reforged[srcIndex] = reforged[srcIndex] - amount
+      reforged[dstIndex] = reforged[dstIndex] + amount
     end
   end
   for src, c in pairs(data.conv) do
@@ -549,14 +668,35 @@ function ReforgeLite:InitReforgeClassic()
       data.initial[dst] = data.initial[dst] - Round(reforged[src] * (data.mult[src] or 1) * f)
     end
   end
+  local totalBaseStats = {}
+  for statIndex = 1, #self.itemStats do
+    local value = data.initial[statIndex] or 0
+    for itemIndex = 1, #data.method.items do
+      value = value + data.method.items[itemIndex].stats[statIndex]
+    end
+    totalBaseStats[statIndex] = value
+  end
+
+  local totalStatsWithConversion = {}
+  for statIndex = 1, #self.itemStats do
+    totalStatsWithConversion[statIndex] = totalBaseStats[statIndex]
+  end
+
+  for src, conv in pairs(data.conv) do
+    local srcTotal = totalBaseStats[src]
+    if srcTotal and srcTotal ~= 0 then
+      for dst, factor in pairs(conv) do
+        if factor ~= 0 then
+          totalStatsWithConversion[dst] = (totalStatsWithConversion[dst] or 0) + Round(srcTotal * factor)
+        end
+      end
+    end
+  end
+
   for i = 1, NUM_CAPS do
     local stat = data.caps[i].stat
     if stat and stat > 0 then
-      local init = data.initial[stat]
-      for j = 1, #data.method.items do
-        init = init + data.method.items[j].stats[stat]
-      end
-      data.caps[i].init = init
+      data.caps[i].init = totalStatsWithConversion[stat] or 0
     else
       data.caps[i].init = 0
     end
@@ -588,7 +728,7 @@ function ReforgeLite:InitReforgeClassic()
   end
 
   for src, conv in pairs(data.conv) do
-    if data.weights[src] == 0 then
+    if data.weights[src] == 0 and not skipConversionWeightAdjustment[src] then
       local relevant = false
       for i = 1, NUM_CAPS do
         local capStat = data.caps[i] and data.caps[i].stat
@@ -859,60 +999,52 @@ function ReforgeLite:ChooseReforgeClassic (data, reforgeOptions, scores, codes, 
 end
 
 function ReforgeLite:ComputeReforge()
-  local data = self:InitReforgeClassic()
-  local reforgeOptions = {}
-  for i = 1, #self.itemData do
-    reforgeOptions[i] = self:GetItemReforgeOptions(data.method.items[i], data, i)
+  local expertiseStat = statIds.EXP
+  local hitStat = statIds.HIT
+  local expertiseConversion = self.conversion[expertiseStat]
+  local expertiseToHit = expertiseConversion and expertiseConversion[hitStat]
+  local casterExpertiseActive = expertiseToHit and expertiseToHit ~= 0
+  local expertiseWeight = self.pdb.weights[expertiseStat] or 0
+  local effectiveExpertiseWeight = expertiseWeight
+
+  if casterExpertiseActive and expertiseWeight ~= 0 and expertiseWeight ~= 1 then
+    effectiveExpertiseWeight = 1
   end
 
-  self.__chooseLoops = nil
+  local baseOverrides
+  if casterExpertiseActive then
+    baseOverrides = {
+      disableConversions = {[expertiseStat] = true},
+      skipConversionWeightAdjustment = {[expertiseStat] = true},
+    }
+    if expertiseWeight ~= 0 then
+      baseOverrides.weights = {[expertiseStat] = 0}
+    end
+  end
 
-  local scores, codes = self:ComputeReforgeCore(data, reforgeOptions)
+  local methodsWithoutExpertise = RunReforge(self, baseOverrides)
+  local methods
+  if casterExpertiseActive and expertiseWeight ~= 0 then
+    local expertiseOverrides
+    if effectiveExpertiseWeight ~= expertiseWeight then
+      expertiseOverrides = { weights = {[expertiseStat] = effectiveExpertiseWeight} }
+    end
+    local methodsWithExpertise = RunReforge(self, expertiseOverrides)
+    methods = CombineReforgeMethods(methodsWithoutExpertise, methodsWithExpertise)
+  else
+    methods = methodsWithoutExpertise
+  end
 
-  self.__chooseLoops = nil
-
-  local alternatives = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes)
-  if not alternatives or #alternatives == 0 then
-    scores, codes = nil, nil
-    collectgarbage("collect")
+  if not methods or #methods == 0 then
     if Print and L then
       Print(L["No reforge"])
     end
     return
   end
-  scores, codes = nil, nil
-  collectgarbage ("collect")
 
-  local methods = {}
-  for index, entry in ipairs(alternatives) do
-    local methodCopy = DeepCopy(data.method)
-    local code = entry.code
-    for i = 1, #methodCopy.items do
-      local opt = reforgeOptions[i][code:byte(i)]
-      if data.conv[addonTable.statIds.SPIRIT] and data.conv[addonTable.statIds.SPIRIT][addonTable.statIds.HIT] == 1 then
-        if opt.dst == addonTable.statIds.HIT and methodCopy.items[i].stats[addonTable.statIds.SPIRIT] == 0 then
-          opt.dst = addonTable.statIds.SPIRIT
-        end
-      end
-      methodCopy.items[i].src = opt.src
-      methodCopy.items[i].dst = opt.dst
-    end
-
-    self:FinalizeReforge ({ method = methodCopy })
-
-    methodCopy.isPlaceholder = nil
-    methodCopy.score = entry.score
-    methodCopy.priority = entry.priority
-    methodCopy.satisfied = CopyArray(entry.satisfied)
-    methodCopy.code = entry.code
-    methods[index] = methodCopy
-  end
-
-  if #methods > 0 then
-    self.pdb.methodOrigin = addonName
-    self:SetMethodAlternatives(methods, 1)
-    self:UpdateMethodCategory ()
-  end
+  self.pdb.methodOrigin = addonName
+  self:SetMethodAlternatives(methods, 1)
+  self:UpdateMethodCategory ()
 end
 
 function ReforgeLite:Compute()

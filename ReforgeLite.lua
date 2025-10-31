@@ -930,8 +930,6 @@ local StatAdditives = {
   end,
 }
 
-local tooltipStatPrefix = "^%+([%d,]+)%s+"
-
 local hitStatWeightLabel
 local hitResultLabel
 local dodgeStatLabel
@@ -971,27 +969,47 @@ end
 
 RefreshItemStatLabels()
 
-local function RatingStat (i, name_, tip_, long_, id_, tooltipText)
-  return {
-    name = name_,
-    tip = tip_,
-    long = long_,
-    getter = function ()
-      local rating = GetCombatRating(id_)
-      if StatAdditives[id_] then
-        rating = StatAdditives[id_](rating)
+local function Stat(options)
+  local tooltipConst = options.tooltipText or _G[options.tooltipConstant or options.name]
+  local function EscapePattern(text)
+    return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+  end
+  local stat = {
+    statId = options.statId,
+    name = options.name,
+    tip = options.tip,
+    long = options.long,
+    resultLabel = options.resultLabel,
+    getter = options.getter or function ()
+      local rating = GetCombatRating(options.ratingId)
+      if StatAdditives[options.ratingId] then
+        rating = StatAdditives[options.ratingId](rating)
       end
       return rating
     end,
-    mgetter = function (method, orig)
-      return (orig and method.orig_stats and method.orig_stats[i]) or method.stats[i]
+    mgetter = options.mgetter or function (method, orig)
+      return (orig and method.orig_stats and method.orig_stats[options.statId]) or method.stats[options.statId]
     end,
-    tooltipPattern = tooltipStatPrefix .. (tooltipText or long_)
   }
+
+  if not options.tooltipPatterns and tooltipConst then
+    tooltipConst = EscapePattern(tooltipConst)
+    local prefix = options.tooltipPrefix or "%+"
+    local suffix = options.tooltipSuffix or "%+"
+    stat.tooltipPatterns = {
+      "^" .. prefix .. "([%d%.,%s]+)%s*" .. tooltipConst,
+      "^" .. tooltipConst .. "%s*" .. suffix .. "([%d%.,%s]+)"
+    }
+  else
+    stat.tooltipPatterns = options.tooltipPatterns
+  end
+
+  return stat
 end
 
-ReforgeLite.itemStats = {
-    {
+local ITEM_STATS = {
+    Stat {
+      statId = statIds.SPIRIT,
       name = "ITEM_MOD_SPIRIT_SHORT",
       tip = SPELL_STAT5_NAME,
       long = ITEM_MOD_SPIRIT_SHORT,
@@ -1005,15 +1023,29 @@ ReforgeLite.itemStats = {
       mgetter = function (method, orig)
         return (orig and method.orig_stats and method.orig_stats[statIds.SPIRIT]) or method.stats[statIds.SPIRIT]
       end,
-      tooltipPattern = tooltipStatPrefix .. ITEM_MOD_SPIRIT_SHORT
     },
-    RatingStat (statIds.DODGE,   "ITEM_MOD_DODGE_RATING",         dodgeStatLabel, STAT_DODGE,           CR_DODGE),
-    RatingStat (statIds.PARRY,   "ITEM_MOD_PARRY_RATING",         STAT_PARRY,     STAT_PARRY,           CR_PARRY),
-    --RatingStat (statIds.HIT,     "ITEM_MOD_HIT_RATING",           HIT,            HIT,                  CR_HIT),
-    {
+    Stat {
+      statId = statIds.DODGE,
+      name = "ITEM_MOD_DODGE_RATING",
+      tooltipConstant = "ITEM_MOD_DODGE_RATING_SHORT",
+      tip = dodgeStatLabel,
+      long = STAT_DODGE,
+      ratingId = CR_DODGE,
+    },
+    Stat {
+      statId = statIds.PARRY,
+      name = "ITEM_MOD_PARRY_RATING",
+      tooltipConstant = "ITEM_MOD_PARRY_RATING_SHORT",
+      tip = STAT_PARRY,
+      long = STAT_PARRY,
+      ratingId = CR_PARRY,
+    },
+    Stat {
+      statId = statIds.HIT,
       name = "ITEM_MOD_HIT_RATING",
+      tooltipConstant = "ITEM_MOD_HIT_RATING_SHORT",
       tip = hitStatWeightLabel,
-      long = hitStatWeightLabel,
+      long = ITEM_MOD_HIT_RATING_SHORT,
       resultLabel = hitResultLabel,
       getter = function()
         local hit = GetCombatRating(CR_HIT)
@@ -1025,34 +1057,58 @@ ReforgeLite.itemStats = {
       mgetter = function (method, orig)
         return (orig and method.orig_stats and method.orig_stats[statIds.HIT]) or method.stats[statIds.HIT]
       end,
-      tooltipPattern = tooltipStatPrefix .. ITEM_MOD_HIT_RATING_SHORT
     },
-    RatingStat (statIds.CRIT,    "ITEM_MOD_CRIT_RATING",          CRIT_ABBR,      CRIT_ABBR,            CR_CRIT),
-    RatingStat (statIds.HASTE,   "ITEM_MOD_HASTE_RATING",         STAT_HASTE,     STAT_HASTE,           CR_HASTE),
-    RatingStat (statIds.EXP,     "ITEM_MOD_EXPERTISE_RATING",     EXPERTISE_ABBR, STAT_EXPERTISE,       CR_EXPERTISE),
-    RatingStat (statIds.MASTERY, "ITEM_MOD_MASTERY_RATING_SHORT", masteryStatLabel, STAT_MASTERY,         CR_MASTERY),
+    Stat {
+      statId = statIds.CRIT,
+      name = "ITEM_MOD_CRIT_RATING",
+      tooltipConstant = "ITEM_MOD_CRIT_RATING_SHORT",
+      tip = CRIT_ABBR,
+      long = CRIT_ABBR,
+      ratingId = CR_CRIT,
+    },
+    Stat {
+      statId = statIds.HASTE,
+      name = "ITEM_MOD_HASTE_RATING",
+      tooltipConstant = "ITEM_MOD_HASTE_RATING_SHORT",
+      tip = STAT_HASTE,
+      long = STAT_HASTE,
+      ratingId = CR_HASTE,
+    },
+    Stat {
+      statId = statIds.EXP,
+      name = "ITEM_MOD_EXPERTISE_RATING",
+      tooltipConstant = "ITEM_MOD_EXPERTISE_RATING_SHORT",
+      tip = EXPERTISE_ABBR,
+      long = STAT_EXPERTISE,
+      ratingId = CR_EXPERTISE,
+    },
+    Stat {
+      statId = statIds.MASTERY,
+      name = "ITEM_MOD_MASTERY_RATING_SHORT",
+      tip = masteryStatLabel,
+      long = STAT_MASTERY,
+      ratingId = CR_MASTERY,
+    },
 }
+
+local ITEM_STAT_COUNT = #ITEM_STATS
+addonTable.itemStats = ITEM_STATS
+addonTable.itemStatCount = ITEM_STAT_COUNT
+ReforgeLite.itemStats = ITEM_STATS
 
 RefreshItemStatLabels()
 
-if not addonTable.itemStats then
-  addonTable.itemStats = ReforgeLite.itemStats
-end
-if not addonTable.itemStatCount then
-  addonTable.itemStatCount = #ReforgeLite.itemStats
+local REFORGE_TABLE_BASE = 112
+
+local reforgeTable = {}
+for srcIdx in ipairs(ITEM_STATS) do
+  for dstIdx in ipairs(ITEM_STATS) do
+    if srcIdx ~= dstIdx then
+      tinsert(reforgeTable, {srcIdx, dstIdx})
+    end
+  end
 end
 
-local REFORGE_TABLE_BASE = 112
-local reforgeTable = {
-  {statIds.SPIRIT, statIds.DODGE}, {statIds.SPIRIT, statIds.PARRY}, {statIds.SPIRIT, statIds.HIT}, {statIds.SPIRIT, statIds.CRIT}, {statIds.SPIRIT, statIds.HASTE}, {statIds.SPIRIT, statIds.EXP}, {statIds.SPIRIT, statIds.MASTERY},
-  {statIds.DODGE, statIds.SPIRIT}, {statIds.DODGE, statIds.PARRY}, {statIds.DODGE, statIds.HIT}, {statIds.DODGE, statIds.CRIT}, {statIds.DODGE, statIds.HASTE}, {statIds.DODGE, statIds.EXP}, {statIds.DODGE, statIds.MASTERY},
-  {statIds.PARRY, statIds.SPIRIT}, {statIds.PARRY, statIds.DODGE}, {statIds.PARRY, statIds.HIT}, {statIds.PARRY, statIds.CRIT}, {statIds.PARRY, statIds.HASTE}, {statIds.PARRY, statIds.EXP}, {statIds.PARRY, statIds.MASTERY},
-  {statIds.HIT, statIds.SPIRIT}, {statIds.HIT, statIds.DODGE}, {statIds.HIT, statIds.PARRY}, {statIds.HIT, statIds.CRIT}, {statIds.HIT, statIds.HASTE}, {statIds.HIT, statIds.EXP}, {statIds.HIT, statIds.MASTERY},
-  {statIds.CRIT, statIds.SPIRIT}, {statIds.CRIT, statIds.DODGE}, {statIds.CRIT, statIds.PARRY}, {statIds.CRIT, statIds.HIT}, {statIds.CRIT, statIds.HASTE}, {statIds.CRIT, statIds.EXP}, {statIds.CRIT, statIds.MASTERY},
-  {statIds.HASTE, statIds.SPIRIT}, {statIds.HASTE, statIds.DODGE}, {statIds.HASTE, statIds.PARRY}, {statIds.HASTE, statIds.HIT}, {statIds.HASTE, statIds.CRIT}, {statIds.HASTE, statIds.EXP}, {statIds.HASTE, statIds.MASTERY},
-  {statIds.EXP, statIds.SPIRIT}, {statIds.EXP, statIds.DODGE}, {statIds.EXP, statIds.PARRY}, {statIds.EXP, statIds.HIT}, {statIds.EXP, statIds.CRIT}, {statIds.EXP, statIds.HASTE}, {statIds.EXP, statIds.MASTERY},
-  {statIds.MASTERY, statIds.SPIRIT}, {statIds.MASTERY, statIds.DODGE}, {statIds.MASTERY, statIds.PARRY}, {statIds.MASTERY, statIds.HIT}, {statIds.MASTERY, statIds.CRIT}, {statIds.MASTERY, statIds.HASTE}, {statIds.MASTERY, statIds.EXP},
-}
 ReforgeLite.reforgeTable = reforgeTable
 
 local scanTooltip = CreateFrame("GameTooltip", "ReforgeLiteScanTooltip", nil, "GameTooltipTemplate")
@@ -1097,12 +1153,13 @@ function addonTable.GetItemStatsFromTooltip(itemInfo)
   local maxStats = 2
   local srcName, destName
 
-  if itemInfo.reforge then
-    local reforgeEntry = reforgeTable[itemInfo.reforge]
+  local reforgeIndex = itemInfo.reforge
+  if type(reforgeIndex) == "number" and reforgeIndex >= 1 then
+    local reforgeEntry = reforgeTable[reforgeIndex]
     if reforgeEntry then
-      local srcId, dstId = unpack(reforgeEntry)
-      srcName = itemStats[srcId] and itemStats[srcId].name or nil
-      destName = itemStats[dstId] and itemStats[dstId].name or nil
+      local srcIndex, dstIndex = unpack(reforgeEntry)
+      srcName = itemStats[srcIndex] and itemStats[srcIndex].name or nil
+      destName = itemStats[dstIndex] and itemStats[dstIndex].name or nil
       if srcName and destName then
         maxStats = 3
       end
@@ -1117,11 +1174,17 @@ function addonTable.GetItemStatsFromTooltip(itemInfo)
       local text = region:GetText()
       if text and text ~= "" then
         for _, statInfo in ipairs(itemStats) do
-          if statInfo.tooltipPattern and not stats[statInfo.name] then
-            local value = text:match(statInfo.tooltipPattern)
+          if statInfo.tooltipPatterns and not stats[statInfo.name] then
+            local value
+            for _, pattern in ipairs(statInfo.tooltipPatterns) do
+              value = text:match(pattern)
+              if value then
+                break
+              end
+            end
             if value then
               foundStats = foundStats + 1
-              stats[statInfo.name] = tonumber((value:gsub(",", "")))
+              stats[statInfo.name] = tonumber((value:gsub("[^%d]", "")))
               break
             end
           end
@@ -3143,6 +3206,37 @@ function ReforgeLite:UpdateMethodCategory()
   self:RefreshMethodWindow()
   self:UpdateContentSize ()
 end
+
+function ReforgeLite:ShouldGroupExpertiseWithHit()
+  if not self.conversionInitialized then
+    if type(self.GetConversion) ~= "function" then
+      return false
+    end
+    self:GetConversion()
+  end
+
+  if not self.conversion then
+    return false
+  end
+
+  local expertiseConversion = (self.conversion[statIds.EXP] or {})[statIds.HIT]
+  if not expertiseConversion or expertiseConversion == 0 then
+    return false
+  end
+
+  if not C_SpecializationInfo or not C_SpecializationInfo.GetSpecialization then
+    return false
+  end
+
+  local specIndex = C_SpecializationInfo.GetSpecialization()
+  if not specIndex then
+    return false
+  end
+
+  local role = select(6, C_SpecializationInfo.GetSpecializationInfo(specIndex))
+  return role == "DAMAGER"
+end
+
 function ReforgeLite:RefreshMethodStats()
   self:UpdateMethodStatVisibility()
 
@@ -3158,6 +3252,7 @@ function ReforgeLite:RefreshMethodStats()
     local spiritWeight = weights[statIds.SPIRIT] or 0
     local spiritConversion = (self.conversion[statIds.SPIRIT] or {})[statIds.HIT]
     local expertiseConversion = (self.conversion[statIds.EXP] or {})[statIds.HIT]
+    local groupExpertiseWithHit = self:ShouldGroupExpertiseWithHit()
     local showExpertiseHelp = false
 
     for index, stat in ipairs (self.itemStats) do
@@ -3197,6 +3292,14 @@ function ReforgeLite:RefreshMethodStats()
       if index == statIds.SPIRIT then
         local hasSpiritStat = methodValue > 0
         shouldShow = shouldShow and (spiritWeight > 0 or spiritConversion or hasSpiritStat)
+      elseif index == statIds.EXP and groupExpertiseWithHit then
+        local hasExpertiseStat = expertiseConversion and methodValue > 0
+        if statRow and statRow.value then
+          if hasExpertiseStat then
+            statRow.value:SetText("")
+          end
+        end
+        shouldShow = shouldShow and hasExpertiseStat
       end
 
       methodStats:SetRowExpanded(row, shouldShow)
@@ -3531,8 +3634,9 @@ function ReforgeLite:UpdateItems()
         statsOrig = CopyTableShallow(statsSource)
         stats = CopyTableShallow(statsSource)
         if info.reforge then
-          local srcId, dstId = unpack(reforgeTable[info.reforge])
-          reforgeSrc, reforgeDst = self.itemStats[srcId].name, self.itemStats[dstId].name
+          local srcIndex, dstIndex = unpack(reforgeTable[info.reforge])
+          reforgeSrc = self.itemStats[srcIndex].name
+          reforgeDst = self.itemStats[dstIndex].name
           local amount = floor ((stats[reforgeSrc] or 0) * addonTable.REFORGE_COEFF)
           stats[reforgeSrc] = (stats[reforgeSrc] or 0) - amount
           stats[reforgeDst] = (stats[reforgeDst] or 0) + amount
@@ -4214,12 +4318,12 @@ function ReforgeLite:DoReforgeUpdate()
           if reforgeItemInfo and reforgeItemInfo.link then
             stats = GetItemStats(reforgeItemInfo) or {}
           end
-          for s, reforgeInfo in ipairs(reforgeTable) do
-            local srcstat, dststat = unpack(reforgeInfo)
-            if (stats[self.itemStats[srcstat].name] or 0) ~= 0 and (stats[self.itemStats[dststat].name] or 0) == 0 then
+          for _, reforgeInfo in ipairs(reforgeTable) do
+            local srcIndex, dstIndex = unpack(reforgeInfo)
+            if (stats[self.itemStats[srcIndex].name] or 0) ~= 0 and (stats[self.itemStats[dstIndex].name] or 0) == 0 then
               id = id + 1
             end
-            if srcstat == self.pdb.method.items[slotId].src and dststat == self.pdb.method.items[slotId].dst then
+            if srcIndex == self.pdb.method.items[slotId].src and dstIndex == self.pdb.method.items[slotId].dst then
               C_Reforge.ReforgeItem (id)
               coroutine.yield()
             end
