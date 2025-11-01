@@ -7,7 +7,8 @@ L["^+(%d+) %s$"] = "^+(%d+) %s$"
 L["Active window color"] = "Color de ventana activa"
 L["Add cap"] = "Agregar cap"
 --[[Translation missing --]]
---[[ L["Apply %s Output"] = ""--]] 
+--[[ L["Apply %s Output"] = ""--]]
+L["Reforge Result Title"] = "Resultado de Reforja"
 L["At least"] = "Al menos"
 L["At most"] = "Como maximo"
 --[[Translation missing --]]
@@ -17,8 +18,7 @@ L["Alt %d"] = "Alt %d"
 --[[Translation missing --]]
 --[[ L["Buffs"] = ""--]] 
 L["Cap value"] = "Valor de cap"
---[[Translation missing --]]
---[[ L["Click an item to lock it"] = ""--]] 
+L["Click an item to lock it"] = "Haz clic en un objeto para bloquearlo"
 L["Compute"] = "Calcular"
 L["Crit block"] = "Crit block"
 --[[Translation missing --]]
@@ -30,8 +30,10 @@ L["Crit block"] = "Crit block"
 L["Enter pawn string"] = "Introduzca cadena peon"
 L["Enter the preset name"] = "Introduzca el nombre del ajuste"
 L["Enter WoWSims JSON"] = "Ingrese WoWSims JSON"
+L["Pawn successfully imported."] = "Pawn importado correctamente."
 --[[Translation missing --]]
 --[[ L["Enter WoWSims JSON or Pawn string"] = ""--]] 
+L["Enter WoWSims JSON or Pawn string"] = "Ingrese WoWSims JSON o la cadena de Pawn"
 L["Exactly"] = "Exactamente"
 L["Expertise hard cap"] = "Cap maximo Pericia"
 L["Expertise soft cap"] = "Cap minimo Pericia"
@@ -56,16 +58,21 @@ L["Open window when reforging"] = "Abrir ventana cuando reforje"
 --[[Translation missing --]]
 --[[ L["Other/No food"] = ""--]] 
 L["Presets"] = "Ajustes pre-establecidos"
+L["Click to load preset"] = "Haz clic para cargar el ajuste preestablecido"
+L["Shift+Click to delete"] = "Shift+Clic para eliminar"
+L["Delete preset '%s'?"] = "¿Eliminar el ajuste preestablecido '%s'?"
 L["Reforging window must be open"] = "Ventana de reforje tiene que estar abierta"
 L["Remove cap"] = "Quitar cap"
 L["Result"] = "Resultado"
 L["Score"] = "Puntuacion"
+L["Show help buttons"] = "Mostrar botones de ayuda de la IU"
 L["Speed/Accuracy"] = "Velocidad/Precisión"
 L["Extra Fast"] = "Muy rápido (menor precisión)"
 L["Fast"] = "Rápido (precisión reducida)"
 L["Normal"] = "Normal (máxima precisión)"
 --[[Translation missing --]]
 --[[ L["Show reforged stats in item tooltips"] = ""--]]
+L["Show import button"] = "Mostrar el botón de importación"
 L["Slide to the left if the calculation slows your game too much."] = "Deslízate hacia la izquierda si el cálculo ralentiza demasiado tu juego."
 --[[Translation missing --]]
 --[[ L["Source stat color"] = ""--]] 
@@ -75,13 +82,14 @@ L["Spell hit cap"] = "Cap de golpe con hechizos"
 L["Spirit to hit"] = "Espiritu a Golpe"
 L["Stat Weights"] = "Peso de Estadisticas"
 L["Sum"] = "Tot"
+L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."
 --[[Translation missing --]]
---[[ L["Summarize reforged stats"] = ""--]] 
+--[[ L["Summarize reforged stats"] = ""--]]
 --[[Translation missing --]]
 --[[ L["Tanking model"] = ""--]] 
 --[[Translation missing --]]
 --[[ L["ticks"] = ""--]] 
 L["Weight after cap"] = "Peso despues del cap"
 --[[Translation missing --]]
---[[ L["Window Settings"] = ""--]] 
+L["Window Settings"] = "Configuración de la ventana" 
 

@@ -709,7 +709,7 @@ ReforgeLiteLiteDB = nil
 local ITEM_SIZE = 24
 
 local NUM_CAPS = 3
-local EXACT_CAP_LIMIT = 1
+local EXACT_CAP_LIMIT = 2
 addonTable.NUM_CAPS = NUM_CAPS
 
 local ITEM_SLOTS = {
@@ -737,6 +737,7 @@ local floor = math.floor
 local max = math.max
 
 local METHOD_ALTERNATIVE_BUTTON_HEIGHT = 32
+local METHOD_ACTION_BUTTON_HEIGHT = 22
 local METHOD_ALTERNATIVE_BUTTON_SPACING = 6
 local METHOD_ALTERNATIVE_BUTTON_MIN_WIDTH = 72
 local METHOD_ALTERNATIVE_COLUMN_SPACING = 8
@@ -777,6 +778,7 @@ local DefaultDB = {
   global = {
     windowLocation = false,
     methodWindowLocation = false,
+    wowSimsPopupLocation = false,
     openOnReforge = true,
     speed = addonTable.MAX_LOOPS * 0.8,
     coreSpeedPreset = "fast",
@@ -970,7 +972,6 @@ end
 RefreshItemStatLabels()
 
 local function Stat(options)
-  local tooltipConst = options.tooltipText or _G[options.tooltipConstant or options.name]
   local function EscapePattern(text)
     return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
   end
@@ -980,6 +981,10 @@ local function Stat(options)
     tip = options.tip,
     long = options.long,
     resultLabel = options.resultLabel,
+    tooltipConstant = options.tooltipConstant,
+    tooltipPrefix = options.tooltipPrefix,
+    tooltipSuffix = options.tooltipSuffix,
+    customTooltipPatterns = options.tooltipPatterns,
     getter = options.getter or function ()
       local rating = GetCombatRating(options.ratingId)
       if StatAdditives[options.ratingId] then
@@ -992,16 +997,29 @@ local function Stat(options)
     end,
   }
 
-  if not options.tooltipPatterns and tooltipConst then
-    tooltipConst = EscapePattern(tooltipConst)
-    local prefix = options.tooltipPrefix or "%+"
-    local suffix = options.tooltipSuffix or "%+"
-    stat.tooltipPatterns = {
-      "^" .. prefix .. "([%d%.,%s]+)%s*" .. tooltipConst,
-      "^" .. tooltipConst .. "%s*" .. suffix .. "([%d%.,%s]+)"
-    }
-  else
-    stat.tooltipPatterns = options.tooltipPatterns
+  function stat:getTooltipPatterns()
+    if self.customTooltipPatterns then
+      return self.customTooltipPatterns
+    end
+
+    local tooltipText = _G[self.tooltipConstant or self.name]
+    if type(tooltipText) ~= "string" or tooltipText == "" then
+      return nil
+    end
+
+    if self.generatedTooltipText ~= tooltipText then
+      local escapedText = EscapePattern(tooltipText)
+      local prefix = self.tooltipPrefix or "%+"
+      local suffix = self.tooltipSuffix or "%+"
+
+      self.generatedTooltipPatterns = {
+        "^" .. prefix .. "([%d%.,%s]+)%s*" .. escapedText,
+        "^" .. escapedText .. "%s*" .. suffix .. "([%d%.,%s]+)"
+      }
+      self.generatedTooltipText = tooltipText
+    end
+
+    return self.generatedTooltipPatterns
   end
 
   return stat
@@ -1153,6 +1171,18 @@ function addonTable.GetItemStatsFromTooltip(itemInfo)
   local maxStats = 2
   local srcName, destName
 
+  local function CleanTooltipLine(text)
+    if type(text) ~= "string" then
+      return ""
+    end
+
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    text = text:gsub("%b()", "")
+    text = text:gsub("%s+", " ")
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    return text
+  end
+
   local reforgeIndex = itemInfo.reforge
   if type(reforgeIndex) == "number" and reforgeIndex >= 1 then
     local reforgeEntry = reforgeTable[reforgeIndex]
@@ -1171,21 +1201,27 @@ function addonTable.GetItemStatsFromTooltip(itemInfo)
       break
     end
     if region.GetText then
-      local text = region:GetText()
-      if text and text ~= "" then
+      local text = CleanTooltipLine(region:GetText())
+      if text ~= "" then
         for _, statInfo in ipairs(itemStats) do
-          if statInfo.tooltipPatterns and not stats[statInfo.name] then
-            local value
-            for _, pattern in ipairs(statInfo.tooltipPatterns) do
-              value = text:match(pattern)
+          if not stats[statInfo.name] and statInfo.getTooltipPatterns then
+            local tooltipPatterns = statInfo:getTooltipPatterns()
+            if tooltipPatterns then
+              local value
+              for _, pattern in ipairs(tooltipPatterns) do
+                value = text:match(pattern)
+                if value then
+                  break
+                end
+              end
               if value then
+                local numericValue = tonumber((value:gsub("[^%d%-]", "")))
+                if numericValue then
+                  foundStats = foundStats + 1
+                  stats[statInfo.name] = numericValue
+                end
                 break
               end
-            end
-            if value then
-              foundStats = foundStats + 1
-              stats[statInfo.name] = tonumber((value:gsub("[^%d]", "")))
-              break
             end
           end
         end
@@ -1493,6 +1529,36 @@ function ReforgeLite:GetFrameY (frame)
   return offs
 end
 
+local plusSign = (_G and _G.PLUS_SIGN) or "+"
+local minusSign = (_G and _G.MINUS_SIGN) or "-"
+
+local function FormatNumber(num)
+  if type(num) ~= "number" then
+    return tostring(num or "")
+  end
+
+  if num == 0 then
+    return FormatLargeNumber(0)
+  end
+
+  local prefix = num > 0 and plusSign or minusSign
+  local magnitude = abs(num)
+  local rounded = floor(magnitude + 0.5)
+  if abs(magnitude - rounded) < 0.01 then
+    magnitude = rounded
+    return prefix .. FormatLargeNumber(magnitude)
+  end
+
+  local decimalFormatted = string.format("%.2f", magnitude)
+  local integerPart, fractionalPart = decimalFormatted:match("^(%d+)%.(%d+)$")
+  if integerPart and fractionalPart then
+    local formattedInteger = FormatLargeNumber(tonumber(integerPart))
+    return string.format("%s%s.%s", prefix, formattedInteger, fractionalPart)
+  end
+
+  return prefix .. decimalFormatted
+end
+
 local function SetTextDelta (text, value, cur, override)
   override = override or (value - cur)
   if override == 0 then
@@ -1502,7 +1568,7 @@ local function SetTextDelta (text, value, cur, override)
   else
     text:SetTextColor (1, 0.4, 0.4)
   end
-  text:SetFormattedText(value - cur >= 0 and "+%s" or "%s", value - cur)
+  text:SetText(FormatNumber(value - cur))
 end
 
 ------------------------------------------------------------------------
@@ -1915,7 +1981,7 @@ function ReforgeLite:CreateItemTable ()
   self.statTotals = {}
   self.itemTable:SetCellText (#self.itemSlots + 1, 0, "", "CENTER", {1, 0.8, 0})
   for i, v in ipairs (self.itemStats) do
-    self.itemTable:SetCellText (#self.itemSlots + 1, i, "0", nil, {1, 0.8, 0})
+    self.itemTable:SetCellText (#self.itemSlots + 1, i, FormatLargeNumber(0), nil, {1, 0.8, 0})
     self.statTotals[i] = self.itemTable.cells[#self.itemSlots + 1][i]
   end
 
@@ -1953,13 +2019,112 @@ end
 function ReforgeLite:CanUseExactCapMethod(capIndex, pointIndex)
   local cap = self.pdb.caps and self.pdb.caps[capIndex]
   local point = cap and cap.points and cap.points[pointIndex]
-  if not point then
-    return false
-  end
-  if point.method == addonTable.StatCapMethods.Exactly then
+  if point and point.method == addonTable.StatCapMethods.Exactly then
     return true
   end
   return self:GetExactCapSelectionCount(capIndex, pointIndex) < EXACT_CAP_LIMIT
+end
+
+function ReforgeLite:GetCapMethodCounts(capIndex, excludePointIndex)
+  local counts = {
+    [addonTable.StatCapMethods.AtLeast] = 0,
+    [addonTable.StatCapMethods.AtMost] = 0,
+    [addonTable.StatCapMethods.Exactly] = 0,
+  }
+
+  local cap = self.pdb.caps and self.pdb.caps[capIndex]
+  if not cap or not cap.points then
+    return counts
+  end
+
+  for index, point in ipairs(cap.points) do
+    if not excludePointIndex or index ~= excludePointIndex then
+      if counts[point.method] ~= nil then
+        counts[point.method] = counts[point.method] + 1
+      end
+    end
+  end
+
+  return counts
+end
+
+function ReforgeLite:CanAddCapPoint(capIndex)
+  local cap = self.pdb.caps and self.pdb.caps[capIndex]
+  if not cap or cap.stat == 0 then
+    return false
+  end
+
+  cap.points = cap.points or {}
+  local numPoints = #cap.points
+  if numPoints == 0 then
+    return true
+  end
+
+  if numPoints >= 2 then
+    return false
+  end
+
+  for _, point in ipairs(cap.points) do
+    if point.method == addonTable.StatCapMethods.Exactly then
+      return false
+    end
+  end
+
+  return true
+end
+
+function ReforgeLite:ShouldDisableCapMethodOption(capIndex, pointIndex, method, currentMethod)
+  if method == addonTable.StatCapMethods.Exactly then
+    return not self:CanUseExactCapMethod(capIndex, pointIndex)
+  end
+
+  local cap = self.pdb.caps and self.pdb.caps[capIndex]
+  if not cap or not cap.points then
+    return false
+  end
+
+  if currentMethod == nil and pointIndex and cap.points[pointIndex] then
+    currentMethod = cap.points[pointIndex].method
+  end
+
+  local occurrences = 0
+  for index, point in ipairs(cap.points) do
+    if point.method == method then
+      occurrences = occurrences + 1
+      if pointIndex and cap.points[pointIndex] and index ~= pointIndex then
+        return true
+      end
+    end
+  end
+
+  if (not pointIndex or not cap.points[pointIndex]) and currentMethod ~= method and occurrences > 0 then
+    return true
+  end
+
+  return false
+end
+
+function ReforgeLite:UpdateCapAddButtonState(capIndex)
+  if not self.statCaps or not self.statCaps[capIndex] then
+    return
+  end
+
+  local addButton = self.statCaps[capIndex].add
+  if not addButton then
+    return
+  end
+
+  local cap = self.pdb.caps and self.pdb.caps[capIndex]
+  if not cap or cap.stat == 0 then
+    addButton:Disable()
+    return
+  end
+
+  if self:CanAddCapPoint(capIndex) then
+    addButton:Enable()
+  else
+    addButton:Disable()
+  end
 end
 
 function ReforgeLite:NormalizeExactCapSelections()
@@ -1980,6 +2145,10 @@ function ReforgeLite:NormalizeExactCapSelections()
 end
 
 function ReforgeLite:AddCapPoint (i, loading)
+  if not loading and not self:CanAddCapPoint(i) then
+    return
+  end
+
   self.pdb.caps[i] = self.pdb.caps[i] or CreateDefaultCap()
   self.pdb.caps[i].points = self.pdb.caps[i].points or {}
   local base = self:GetCapBaseRow(i)
@@ -1987,61 +2156,157 @@ function ReforgeLite:AddCapPoint (i, loading)
   local point = (loading or #self.pdb.caps[i].points + 1)
   self.statCaps:AddRow (row)
 
+  local capPoints = self.pdb.caps[i].points
+  local capPointRef = loading and capPoints[loading] or nil
+
   if not loading then
-    tinsert (self.pdb.caps[i].points, 1, {value = 0, method = 1, after = 0, preset = 1})
+    local methodCounts = self:GetCapMethodCounts(i)
+    local newMethod = addonTable.StatCapMethods.AtLeast
+    if methodCounts[addonTable.StatCapMethods.AtLeast] > 0 and methodCounts[addonTable.StatCapMethods.AtMost] == 0 then
+      newMethod = addonTable.StatCapMethods.AtMost
+    elseif methodCounts[addonTable.StatCapMethods.AtMost] > 0 and methodCounts[addonTable.StatCapMethods.AtLeast] == 0 then
+      newMethod = addonTable.StatCapMethods.AtLeast
+    elseif methodCounts[addonTable.StatCapMethods.Exactly] > 0 then
+      newMethod = addonTable.StatCapMethods.Exactly
+    end
+
+    tinsert (capPoints, 1, {value = 0, method = newMethod, after = 0, preset = 1})
+    capPointRef = capPoints[1]
   end
 
-  local rem = GUI:CreateImageButton (self.statCaps, 20, 20, "Interface\\PaperDollInfoFrame\\UI-GearManager-LeaveItem-Transparent",
+  capPointRef = capPointRef or capPoints[point]
+
+  local function ResolvePointIndex(widget)
+    local points = capPoints
+    if not points or #points == 0 then
+      return 1
+    end
+
+    if widget then
+      local ref = widget.capPointRef
+      if ref then
+        for idx, entry in ipairs(points) do
+          if entry == ref then
+            widget.pointIndex = idx
+            return idx
+          end
+        end
+      end
+
+      local widgetIndex = widget.pointIndex
+      if widgetIndex and points[widgetIndex] then
+        return widgetIndex
+      end
+    end
+
+    if capPointRef then
+      for idx, entry in ipairs(points) do
+        if entry == capPointRef then
+          return idx
+        end
+      end
+    end
+
+    local fallback = point or 1
+    if fallback < 1 then
+      fallback = 1
+    elseif fallback > #points then
+      fallback = #points
+    end
+    return fallback
+  end
+
+  local rem
+  rem = GUI:CreateImageButton (self.statCaps, 20, 20, "Interface\\PaperDollInfoFrame\\UI-GearManager-LeaveItem-Transparent",
     "Interface\\PaperDollInfoFrame\\UI-GearManager-LeaveItem-Transparent", nil, nil, function ()
-    self:RemoveCapPoint (i, point)
+    local targetIndex = ResolvePointIndex(rem)
+    self:RemoveCapPoint (i, targetIndex)
     self.statCaps:ToggleStatDropdownToCorrectState()
   end)
+  rem.capPointRef = capPointRef
+  rem.pointIndex = ResolvePointIndex(rem)
+
   local methodList = {
     {value = addonTable.StatCapMethods.AtLeast, name = L["At least"]},
     {value = addonTable.StatCapMethods.AtMost, name = L["At most"]},
     {value = addonTable.StatCapMethods.Exactly, name = L["Exactly"]}
   }
-  local method = GUI:CreateDropdown(self.statCaps, methodList, {
-    default = 1,
-    setter = function(_, val)
-      self.pdb.caps[i].points[point].method = val
+  local method
+  method = GUI:CreateDropdown(self.statCaps, methodList, {
+    default = (capPointRef and capPointRef.method) or addonTable.StatCapMethods.AtLeast,
+    setter = function(dropdown, val)
+      local methodDropdown = dropdown or method
+      local targetIndex = ResolvePointIndex(methodDropdown)
+      if capPoints[targetIndex] then
+        capPoints[targetIndex].method = val
+      end
+      if methodDropdown then
+        methodDropdown.value = val
+      end
+      self:UpdateCapAddButtonState(i)
     end,
     width = 95,
-    menuItemHidden = function(info)
-      if info.value ~= addonTable.StatCapMethods.Exactly then
+    menuItemDisabled = function(methodValue, dropdown)
+      local methodDropdown = dropdown or method
+      if not methodDropdown then
         return false
       end
-      return not self:CanUseExactCapMethod(i, point)
+      local targetIndex = ResolvePointIndex(methodDropdown)
+      return self:ShouldDisableCapMethodOption(i, targetIndex, methodValue, methodDropdown.value)
     end,
   })
-  local preset = GUI:CreateDropdown (self.statCaps, self.capPresets, {
-    default = 1,
+  method.capPointRef = capPointRef
+  method.pointIndex = ResolvePointIndex(method)
+
+  local preset
+  preset = GUI:CreateDropdown (self.statCaps, self.capPresets, {
+    default = (capPointRef and capPointRef.preset) or 1,
     width = 60,
     setter = function (_,val)
-      self.pdb.caps[i].points[point].preset = val
-      self:UpdateCapPreset (i, point)
-      self:ReorderCapPoint (i, point)
-      self:RefreshMethodStats ()
+      local targetIndex = ResolvePointIndex(preset)
+      if capPoints[targetIndex] then
+        capPoints[targetIndex].preset = val
+        self:UpdateCapPreset (i, targetIndex)
+        self:ReorderCapPoint (i, targetIndex)
+        self:RefreshMethodStats ()
+      end
     end,
     menuItemHidden = function(info)
       return info.category and info.category ~= self.statCaps[i].stat.selectedValue
     end
   })
-  local value = GUI:CreateEditBox (self.statCaps, 40, 30, 0, function (val)
-    self.pdb.caps[i].points[point].value = val
-    self:ReorderCapPoint (i, point)
-    self:RefreshMethodStats ()
+  preset.capPointRef = capPointRef
+  preset.pointIndex = ResolvePointIndex(preset)
+
+  local value
+  value = GUI:CreateEditBox (self.statCaps, 40, 30, (capPointRef and capPointRef.value) or 0, function (val)
+    local targetIndex = ResolvePointIndex(value)
+    if capPoints[targetIndex] then
+      capPoints[targetIndex].value = val
+      self:ReorderCapPoint (i, targetIndex)
+      self:RefreshMethodStats ()
+    end
   end)
-  local after = GUI:CreateEditBox (self.statCaps, 40, 30, 0, function (val)
-    self.pdb.caps[i].points[point].after = val
-    self:RefreshMethodStats ()
+  value.capPointRef = capPointRef
+  value.pointIndex = ResolvePointIndex(value)
+
+  local after
+  after = GUI:CreateEditBox (self.statCaps, 40, 30, (capPointRef and capPointRef.after) or 0, function (val)
+    local targetIndex = ResolvePointIndex(after)
+    if capPoints[targetIndex] then
+      capPoints[targetIndex].after = val
+      self:RefreshMethodStats ()
+    end
   end)
+  after.capPointRef = capPointRef
+  after.pointIndex = ResolvePointIndex(after)
 
   GUI:SetTooltip (rem, L["Remove cap"])
   GUI:SetTooltip (value, function()
     local cap = self.pdb.caps[i]
     if cap.stat == statIds.SPIRIT then return end
-    local pointValue = (cap.points[point].value or 0)
+    local targetIndex = ResolvePointIndex(value)
+    local pointValue = (cap.points[targetIndex].value or 0)
     local rating = pointValue / self:RatingPerPoint(cap.stat)
     if cap.stat == statIds.HIT then
       local meleeHitBonus = self:GetMeleeHitBonus()
@@ -2087,7 +2352,7 @@ function ReforgeLite:AddCapPoint (i, loading)
     self:UpdateCapPoints (i)
     self:UpdateContentSize ()
   end
-  self.statCaps[i].add:Enable()
+  self:UpdateCapAddButtonState(i)
   self.statCaps:OnUpdateFix()
 end
 function ReforgeLite:RemoveCapPoint (i, point, loading)
@@ -2115,6 +2380,7 @@ function ReforgeLite:RemoveCapPoint (i, point, loading)
   if self.statCaps and self.statCaps.ToggleStatDropdownToCorrectState then
     self.statCaps:ToggleStatDropdownToCorrectState()
   end
+  self:UpdateCapAddButtonState(i)
 end
 function ReforgeLite:ReorderCapPoint (i, point)
   local newpos = point
@@ -2151,10 +2417,35 @@ end
 function ReforgeLite:UpdateCapPoints (i)
   local base = self:GetCapBaseRow(i)
   for point = 1, #self.pdb.caps[i].points do
-    self.statCaps.cells[base + point][1]:SetValue (self.pdb.caps[i].points[point].method)
-    self.statCaps.cells[base + point][2]:SetValue (self.pdb.caps[i].points[point].preset)
+    local row = base + point
+    local cells = self.statCaps.cells[row]
+    if cells then
+      local capPoint = self.pdb.caps[i].points[point]
+      if cells[0] then
+        cells[0].pointIndex = point
+        cells[0].capPointRef = capPoint
+      end
+      if cells[1] then
+        cells[1].pointIndex = point
+        cells[1].capPointRef = capPoint
+        cells[1]:SetValue (capPoint.method)
+      end
+      if cells[2] then
+        cells[2].pointIndex = point
+        cells[2].capPointRef = capPoint
+        cells[2]:SetValue (capPoint.preset)
+      end
+      if cells[3] then
+        cells[3].pointIndex = point
+        cells[3].capPointRef = capPoint
+      end
+      if cells[4] then
+        cells[4].pointIndex = point
+        cells[4].capPointRef = capPoint
+        cells[4]:SetText (capPoint.after)
+      end
+    end
     self:UpdateCapPreset (i, point)
-    self.statCaps.cells[base + point][4]:SetText (self.pdb.caps[i].points[point].after)
   end
 end
 function ReforgeLite:CollapseStatCaps()
@@ -2208,6 +2499,7 @@ function ReforgeLite:SetStatWeights (weights, caps)
         self.pdb.caps[i].stat = 0
         self.pdb.caps[i].points = {}
       end
+      self:UpdateCapAddButtonState(i)
     end
     self:NormalizeExactCapSelections()
     for i = 1, NUM_CAPS do
@@ -2388,6 +2680,8 @@ function ReforgeLite:CreateOptionList ()
           previous = dropdown.value
         end
 
+        self.pdb.caps[i].stat = val
+
         if val == 0 then
           while #self.pdb.caps[i].points > 0 do
             self:RemoveCapPoint (i, 1)
@@ -2396,12 +2690,12 @@ function ReforgeLite:CreateOptionList ()
           self:AddCapPoint(i)
         end
 
-        self.pdb.caps[i].stat = val
         if val == 0 then
           self:CollapseStatCaps()
         end
 
         self.statCaps:ToggleStatDropdownToCorrectState()
+        self:UpdateCapAddButtonState(i)
       end,
       width = 125,
       menuItemDisabled = function(val)
@@ -2419,12 +2713,16 @@ function ReforgeLite:CreateOptionList ()
 
     self.statCaps[i].add = GUI:CreateImageButton (self.statCaps, 20, 20, "Interface\\Buttons\\UI-PlusButton-Up",
       "Interface\\Buttons\\UI-PlusButton-Down", "Interface\\Buttons\\UI-PlusButton-Hilight", "Interface\\Buttons\\UI-PlusButton-Disabled", function()
-      self:AddCapPoint (i)
+      if self:CanAddCapPoint(i) then
+        self:AddCapPoint (i)
+      end
+      self:UpdateCapAddButtonState(i)
     end)
     GUI:SetTooltip (self.statCaps[i].add, L["Add cap"])
 
     self.statCaps:SetCell (i, 0, self.statCaps[i].stat, "LEFT")
     self.statCaps:SetCell (i, 2, self.statCaps[i].add, "LEFT")
+    self:UpdateCapAddButtonState(i)
   end
 
   for i = 1, NUM_CAPS do
@@ -2778,10 +3076,7 @@ local function FormatMethodDelta(value, base)
   if abs(delta) < 0.01 then
     delta = 0
   end
-  if delta >= 0 then
-    return string.format("+%s", FormatMethodStatValue(delta))
-  end
-  return string.format("-%s", FormatMethodStatValue(-delta))
+  return FormatNumber(delta)
 end
 
 function ReforgeLite:GetMethodAlternativeLabel(index)
@@ -2811,6 +3106,7 @@ function ReforgeLite:SetMethodAlternatives(methods, selectedIndex)
     if self.methodAlternativeButtons then
       self:UpdateMethodAlternativeButtons()
     end
+    self:RefreshWowSimsPopup()
     return
   end
 
@@ -2828,6 +3124,7 @@ function ReforgeLite:SetMethodAlternatives(methods, selectedIndex)
     if self.methodAlternativeButtons then
       self:UpdateMethodAlternativeButtons()
     end
+    self:RefreshWowSimsPopup()
     return
   end
 
@@ -2843,6 +3140,7 @@ function ReforgeLite:SetMethodAlternatives(methods, selectedIndex)
   if self.methodAlternativeButtons then
     self:UpdateMethodAlternativeButtons()
   end
+  self:RefreshWowSimsPopup()
 end
 
 function ReforgeLite:GetSelectedMethodAlternative()
@@ -3001,12 +3299,16 @@ function ReforgeLite:UpdateMethodAlternativeButtons()
     if self.methodAlternativesContainer then
       self.methodAlternativesContainer:Hide()
     end
+    if self.methodWowSimsButton then
+      self.methodWowSimsButton:Hide()
+    end
     return
   end
 
   local methods = self.methodAlternatives or {}
   local selected = self:GetSelectedMethodAlternative()
   local visible = 0
+  local lastRowAnchor
 
   local maxButtons = addonTable.MAX_METHOD_ALTERNATIVES or #self.methodAlternativeButtons
 
@@ -3032,6 +3334,16 @@ function ReforgeLite:UpdateMethodAlternativeButtons()
         else
           button.selected:Hide()
         end
+        if index == 1 then
+          lastRowAnchor = button
+        else
+          local altIndex = index - 2
+          if altIndex < 0 then
+            lastRowAnchor = button
+          elseif (altIndex % 2) == 0 then
+            lastRowAnchor = button
+          end
+        end
       else
         button:Hide()
         button.selected:Hide()
@@ -3046,6 +3358,253 @@ function ReforgeLite:UpdateMethodAlternativeButtons()
       self.methodAlternativesContainer:Hide()
     end
   end
+  if self.methodWowSimsButton then
+    if visible > 0 and lastRowAnchor then
+      self.methodWowSimsButton:Show()
+      self.methodWowSimsButton:ClearAllPoints()
+      self.methodWowSimsButton:SetPoint("TOP", lastRowAnchor, "BOTTOM", 0, -METHOD_ALTERNATIVE_BUTTON_SPACING)
+      self.methodWowSimsButton:SetPoint("LEFT", self.methodAlternativesContainer, "LEFT", 0, 0)
+      self.methodWowSimsButton:SetPoint("RIGHT", self.methodAlternativesContainer, "RIGHT", 0, 0)
+    else
+      self.methodWowSimsButton:Hide()
+    end
+  end
+
+  self:RefreshWowSimsPopup()
+end
+
+local function PrintWowSimsMessage(message)
+  if DEFAULT_CHAT_FRAME and message then
+    DEFAULT_CHAT_FRAME:AddMessage(("[%s] %s"):format(addonName, message))
+  end
+end
+
+local function GetExportMethod(self)
+  if self.methodAlternativesHidden then
+    return self.pdb and self.pdb.method
+  end
+
+  local alternatives = self.methodAlternatives
+  if alternatives and #alternatives > 0 then
+    local index = self:GetSelectedMethodAlternative()
+    local method = alternatives[index]
+    if method and not method.isPlaceholder then
+      return method
+    end
+  end
+
+  return self.pdb and self.pdb.method
+end
+
+local WOW_SIMS_POPUP_TITLE = "WoW Sims Export"
+
+local function GetWowSimsSuffix(self)
+  if self.methodAlternativesHidden then
+    local method = self.pdb and self.pdb.method
+    if method and method.items then
+      return "(Best)"
+    end
+    return nil
+  end
+
+  local selected = self:GetSelectedMethodAlternative()
+  if not selected then
+    return nil
+  end
+
+  if selected <= 1 then
+    return "(Best)"
+  end
+
+  return string.format("(ALT %d)", selected - 1)
+end
+
+function ReforgeLite:SetWowSimsPopupTitleSuffix(suffix)
+  local popup = self.wowSimsPopup
+  if not popup or not popup.title then
+    return
+  end
+
+  if suffix and suffix ~= "" then
+    popup.title:SetText(('%s - Code: %s'):format(WOW_SIMS_POPUP_TITLE, suffix))
+  else
+    popup.title:SetText(WOW_SIMS_POPUP_TITLE)
+  end
+end
+
+function ReforgeLite:EnsureWowSimsPopup()
+  if self.wowSimsPopup then
+    return self.wowSimsPopup
+  end
+
+  local frame = CreateFrame("Frame", addonName .. "WowSimsPopup", UIParent, "BackdropTemplate")
+  frame:SetSize(500, 320)
+  frame:SetFrameStrata("DIALOG")
+  frame:SetToplevel(true)
+  frame:SetClampedToScreen(true)
+  frame:EnableMouse(true)
+  frame:SetMovable(true)
+
+  frame.backdropInfo = self.backdropInfo
+  frame:ApplyBackdrop()
+  frame:SetBackdropColor(self:GetBackdropColor())
+  frame:SetBackdropBorderColor(self:GetBackdropBorderColor())
+
+  frame.titlebar = frame:CreateTexture(nil, "BACKGROUND")
+  frame.titlebar:SetPoint("TOPLEFT", frame, "TOPLEFT", 3, -3)
+  frame.titlebar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
+  frame.titlebar:SetHeight(20)
+
+  if self.SetFrameActive then
+    frame.SetFrameActive = self.SetFrameActive
+    frame:SetFrameActive(true)
+  end
+
+  frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  frame.title:SetTextColor(1, 1, 1)
+  frame.title:SetText(WOW_SIMS_POPUP_TITLE)
+  frame.title:SetPoint("TOPLEFT", 12, frame.title:GetHeight() - frame.titlebar:GetHeight())
+
+  frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButtonNoScripts")
+  frame.close:SetPoint("TOPRIGHT")
+  frame.close:SetSize(28, 28)
+  frame.close:SetScript("OnClick", function(btn)
+    btn:GetParent():Hide()
+  end)
+
+  frame:SetScript("OnMouseDown", function(window, button)
+    self:SetNewTopWindow(window)
+    if button == "LeftButton" then
+      window:StartMoving()
+      window.moving = true
+    end
+  end)
+  frame:SetScript("OnMouseUp", function(window)
+    if window.moving then
+      window:StopMovingOrSizing()
+      window.moving = nil
+      if self.db then
+        self.db.wowSimsPopupLocation = SafePack(window:GetPoint())
+      end
+    end
+  end)
+  frame:SetScript("OnShow", function(window)
+    self:SetNewTopWindow(window)
+  end)
+  frame:SetScript("OnHide", function(window)
+    window.moving = nil
+    if window.SetFrameActive then
+      window:SetFrameActive(false)
+    end
+    if self:IsShown() then
+      self:SetNewTopWindow(self)
+    end
+  end)
+
+  frame:ClearAllPoints()
+  if self.db and self.db.wowSimsPopupLocation then
+    frame:SetPoint(SafeUnpack(self.db.wowSimsPopupLocation))
+  else
+    frame:SetPoint("CENTER", self, "CENTER")
+  end
+
+  tinsert(UISpecialFrames, frame:GetName())
+  tinsert(RFL_FRAMES, frame)
+
+  local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+  scrollFrame:SetPoint("TOPLEFT", frame.title, "BOTTOMLEFT", 0, -12)
+  scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -32, 12)
+
+  local editBox = CreateFrame("EditBox", nil, scrollFrame)
+  editBox:SetMultiLine(true)
+  editBox:SetMaxLetters(0)
+  editBox:SetAutoFocus(false)
+  editBox:SetFontObject(ChatFontNormal or GameFontHighlight)
+  editBox:SetWidth(450)
+  editBox:SetScript("OnEscapePressed", function(box)
+    box:ClearFocus()
+    frame:Hide()
+  end)
+
+  scrollFrame:SetScrollChild(editBox)
+  scrollFrame:SetScript("OnSizeChanged", function(_, width)
+    editBox:SetWidth(width)
+  end)
+
+  frame.scrollFrame = scrollFrame
+  frame.editBox = editBox
+
+  frame:Hide()
+
+  self.wowSimsPopup = frame
+  return frame
+end
+
+function ReforgeLite:DisplayWowSimsExport(text, suffix, shouldHighlight)
+  local popup = self:EnsureWowSimsPopup()
+  local editBox = popup.editBox
+  local hadFocus = editBox:HasFocus()
+
+  editBox:SetText(text or "")
+
+  if shouldHighlight then
+    editBox:HighlightText()
+    editBox:SetFocus()
+  elseif hadFocus then
+    editBox:SetFocus()
+  else
+    editBox:HighlightText(0, 0)
+    editBox:ClearFocus()
+  end
+
+  self:SetWowSimsPopupTitleSuffix(suffix)
+  popup:Show()
+end
+
+function ReforgeLite:GenerateWowSimsExportText()
+  local exporter = addonTable.WowSimsExport
+  if not exporter or type(exporter.Generate) ~= "function" then
+    return nil, "WowSims export not available."
+  end
+
+  local method = GetExportMethod(self)
+  if not method or not method.items then
+    return nil, "No reforge method available."
+  end
+
+  local result, err = exporter.Generate(method)
+  if not result then
+    return nil, ("WowSims export failed: %s"):format(tostring(err or "unknown error"))
+  end
+
+  return result
+end
+
+function ReforgeLite:RefreshWowSimsPopup()
+  local popup = self.wowSimsPopup
+  if not popup or not popup:IsShown() then
+    return
+  end
+
+  local result = self:GenerateWowSimsExportText()
+  if not result then
+    popup:Hide()
+    return
+  end
+
+  self:DisplayWowSimsExport(result, GetWowSimsSuffix(self), popup.editBox:HasFocus())
+end
+
+function ReforgeLite:ShowWowSimsExportPopup()
+  local result, err = self:GenerateWowSimsExportText()
+  if not result then
+    if err then
+      PrintWowSimsMessage(err)
+    end
+    return
+  end
+
+  self:DisplayWowSimsExport(result, GetWowSimsSuffix(self), true)
 end
 
 function ReforgeLite:UpdateMethodCategory()
@@ -3075,12 +3634,12 @@ function ReforgeLite:UpdateMethodCategory()
       self.methodStats[i].value = self.methodStats:CreateFontString (nil, "OVERLAY", "GameFontNormalSmall")
       self.methodStats:SetCell (i - 1, 1, self.methodStats[i].value)
       self.methodStats[i].value:SetTextColor (1, 1, 1)
-      self.methodStats[i].value:SetText ("0")
+      self.methodStats[i].value:SetText (FormatLargeNumber(0))
 
       self.methodStats[i].delta = self.methodStats:CreateFontString (nil, "OVERLAY", "GameFontNormalSmall")
       self.methodStats:SetCell (i - 1, 2, self.methodStats[i].delta)
       self.methodStats[i].delta:SetTextColor (0.7, 0.7, 0.7)
-      self.methodStats[i].delta:SetText ("+0")
+      self.methodStats[i].delta:SetText (FormatNumber(0))
 
       labelMeasure:SetText(label or "")
       local labelWidth = labelMeasure:GetStringWidth() or 0
@@ -3156,6 +3715,15 @@ function ReforgeLite:UpdateMethodCategory()
 
     self.methodAlternativeButtons = {}
     self:EnsureMethodAlternativeButtons(addonTable.MAX_METHOD_ALTERNATIVES)
+
+    self.methodWowSimsButton = GUI:CreatePanelButton(self.content, "WowSims", function()
+      self:ShowWowSimsExportPopup()
+    end)
+    self.methodWowSimsButton:SetHeight(METHOD_ACTION_BUTTON_HEIGHT)
+    self.methodWowSimsButton:SetPoint("TOPLEFT", self.methodAlternativesContainer, "BOTTOMLEFT", 0, 0)
+    self.methodWowSimsButton:SetPoint("TOPRIGHT", self.methodAlternativesContainer, "BOTTOMRIGHT", 0, 0)
+    self.methodWowSimsButton:Hide()
+    self.methodCategory:AddFrame(self.methodWowSimsButton)
 
     self.methodReforge = GUI:CreatePanelButton (self.content, REFORGE, function(btn)
       if not self.methodWindow then
@@ -3266,12 +3834,16 @@ function ReforgeLite:RefreshMethodStats()
       local methodValue = 0
       if method and stat.mgetter then
         methodValue = stat.mgetter (method)
+        local formattedValue
+        if stat.percent then
+          formattedValue = string.format("%s%%", FormatMethodStatValue(methodValue))
+        else
+          formattedValue = FormatMethodStatValue(methodValue)
+        end
         if statRow and statRow.value then
-          if stat.percent then
-            statRow.value:SetFormattedText("%.2f%%", methodValue)
-          else
-            statRow.value:SetText (methodValue)
-          end
+          statRow.value:SetText(formattedValue)
+        elseif methodStats then
+          methodStats:SetCellText(row, 1, formattedValue)
         end
         local override
         local compareValue = stat.mgetter (method, true)
@@ -3549,13 +4121,39 @@ local function CollectItemInfoWithUpgrade(item, slotId)
     return
   end
 
-  local derivedUpgrade, originalIlvl = DeriveItemUpgradeData(item)
+  local apiBaseIlvl, apiCurrentIlvl
+  if C_Item and C_Item.GetDetailedItemLevelInfo then
+    local itemId = item:GetItemID()
+    if itemId then
+      apiBaseIlvl, apiCurrentIlvl = C_Item.GetDetailedItemLevelInfo(itemId)
+    end
+  end
+
+  local derivedUpgrade, derivedOriginalIlvl = DeriveItemUpgradeData(item)
+
+  local originalIlvl = apiBaseIlvl
+  if not originalIlvl or originalIlvl <= 0 then
+    originalIlvl = derivedOriginalIlvl
+  end
+
+  local currentIlvl = apiCurrentIlvl
+  if not currentIlvl or currentIlvl <= 0 then
+    currentIlvl = item:GetCurrentItemLevel()
+  end
+
+  local computedUpgrade
+  if currentIlvl and currentIlvl > 0 and originalIlvl and originalIlvl > 0 then
+    computedUpgrade = floor(((currentIlvl - originalIlvl) / 4) + 0.5)
+    if computedUpgrade < 0 then
+      computedUpgrade = 0
+    end
+  end
 
   local itemInfo = {
     link = link,
     itemId = item:GetItemID(),
     itemGUID = item:GetItemGUID(),
-    ilvl = item:GetCurrentItemLevel(),
+    ilvl = currentIlvl,
     slotId = slotId,
   }
 
@@ -3569,11 +4167,17 @@ local function CollectItemInfoWithUpgrade(item, slotId)
     itemInfo.ilvlBase = roundedBase
     itemInfo.originalIlvl = roundedBase
   end
-  if derivedUpgrade and derivedUpgrade > 0 then
+  if computedUpgrade and computedUpgrade > 0 then
+    itemInfo.upgradeLevel = computedUpgrade
+  elseif derivedUpgrade and derivedUpgrade > 0 then
     itemInfo.upgradeLevel = derivedUpgrade
   end
 
   local baseIlvl, upgradeLevel, effectiveIlvl = addonTable.GetItemBaseAndUpgrade(itemInfo)
+
+  if (not baseIlvl or baseIlvl <= 0) and originalIlvl and originalIlvl > 0 then
+    baseIlvl = floor(originalIlvl + 0.5)
+  end
 
   if (not baseIlvl or baseIlvl <= 0) and itemInfo.ilvl then
     baseIlvl = itemInfo.ilvl
@@ -3694,7 +4298,7 @@ function ReforgeLite:UpdateItems()
       end
 
       if currentValue and currentValue ~= 0 then
-        statFont:SetText (currentValue)
+        statFont:SetText (FormatLargeNumber(currentValue))
         if s.name == reforgeSrc then
           statFont:SetTextColor (unpack(fontColors.red))
         elseif s.name == reforgeDst then
@@ -3724,17 +4328,19 @@ function ReforgeLite:UpdateItems()
     self.statColumnShown[i] = showColumn
 
     if self.statTotals[i] then
-      self.statTotals[i]:SetText(v.getter())
+      local totalValue = v.getter and v.getter() or 0
+      if totalValue and totalValue ~= 0 then
+        self.statTotals[i]:SetText(FormatLargeNumber(totalValue))
+      else
+        self.statTotals[i]:SetText(FormatLargeNumber(0))
+      end
     end
 
     if showColumn then
-      if self.itemTable.ExpandColumn then
-        self.itemTable:ExpandColumn(i)
-      else
-        local defaultWidth = (self.itemTable.defaultColumnWidth and self.itemTable.defaultColumnWidth[i]) or 45
-        local minWidth = self.itemTable.minColumnWidth and self.itemTable.minColumnWidth[i] or 0
-        self.itemTable:SetColumnWidth(i, max(defaultWidth, minWidth))
+      if not (self.itemTable and self.itemTable.ExpandColumn) then
+        error("Item table missing ExpandColumn implementation")
       end
+      self.itemTable:ExpandColumn(i)
       if self.itemTable.AutoSizeColumns then
         self.itemTable:AutoSizeColumns(i)
       end
@@ -3751,11 +4357,10 @@ function ReforgeLite:UpdateItems()
         end
       end
     else
-      if self.itemTable.CollapseColumn then
-        self.itemTable:CollapseColumn(i)
-      else
-        self.itemTable:SetColumnWidth(i, 0)
+      if not (self.itemTable and self.itemTable.CollapseColumn) then
+        error("Item table missing CollapseColumn implementation")
       end
+      self.itemTable:CollapseColumn(i)
       if self.statHeaders and self.statHeaders[i] then
         if self.statHeaders[i].Hide then
           self.statHeaders[i]:Hide()
@@ -3999,7 +4604,7 @@ function ReforgeLite:CreateMethodWindow()
   self.methodWindow.title = self.methodWindow:CreateFontString (nil, "OVERLAY", "GameFontNormal")
   self.methodWindow.title:SetTextColor (1, 1, 1)
   self.methodWindow.title.RefreshText = function(frame)
-    frame:SetFormattedText(L["Apply %s Output"], self.pdb.methodOrigin)
+    frame:SetText(L["Reforge Result Title"])
   end
   self.methodWindow.title:RefreshText()
   self.methodWindow.title:SetPoint ("TOPLEFT", 12, self.methodWindow.title:GetHeight()-self.methodWindow.titlebar:GetHeight())

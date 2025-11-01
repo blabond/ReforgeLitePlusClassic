@@ -421,7 +421,7 @@ function GUI:CreateDropdown (parent, values, options)
           end
         end, item.value)
 
-        if dropdown.menuItemDisabled and dropdown.menuItemDisabled(item.value) then
+        if dropdown.menuItemDisabled and dropdown.menuItemDisabled(item.value, dropdown) then
           button:SetEnabled(false)
         end
       end
@@ -1094,9 +1094,9 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
 
     self.collapsedColumns = self.collapsedColumns or {}
     if not self.collapsedColumns[j] then
-      local storedWidth = self.colWidth[j]
-      if storedWidth == nil or storedWidth == "AUTO" or storedWidth <= 0 then
-        storedWidth = self:GetColumnWidth(j)
+      local storedWidth = self:GetColumnWidth(j)
+      if type(storedWidth) ~= "number" or storedWidth <= 0 then
+        storedWidth = self.colWidth[j]
       end
       if type(storedWidth) ~= "number" or storedWidth <= 0 then
         local defaultWidth = self.defaultColumnWidth and self.defaultColumnWidth[j]
@@ -1183,9 +1183,9 @@ function GUI:CreateTable (rows, cols, firstRow, firstColumn, gridColor, parent)
 
     self.collapsedColumns = self.collapsedColumns or {}
     if not self.collapsedColumns[j] then
-      local storedWidth = self.colWidth[j]
-      if storedWidth == nil or storedWidth == "AUTO" or storedWidth <= 0 then
-        storedWidth = self:GetColumnWidth(j)
+      local storedWidth = self:GetColumnWidth(j)
+      if type(storedWidth) ~= "number" or storedWidth <= 0 then
+        storedWidth = self.colWidth[j]
       end
       if type(storedWidth) ~= "number" or storedWidth <= 0 then
         local defaultWidth = self.defaultColumnWidth and self.defaultColumnWidth[j]

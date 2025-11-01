@@ -7,7 +7,8 @@ L["^+(%d+) %s$"] = "^+(%d+) %s$"
 L["Active window color"] = "激活窗口的颜色"
 L["Add cap"] = "添加上限"
 --[[Translation missing --]]
---[[ L["Apply %s Output"] = ""--]] 
+--[[ L["Apply %s Output"] = ""--]]
+L["Reforge Result Title"] = "重铸结果"
 L["At least"] = "至少"
 L["At most"] = "最多"
 --[[Translation missing --]]
@@ -27,8 +28,10 @@ L["Crit block"] = "精确格挡"
 L["Enter pawn string"] = "输入Pawn字符串"
 L["Enter the preset name"] = "输入预设名称"
 L["Enter WoWSims JSON"] = "输入 WoWSims JSON"
+L["Pawn successfully imported."] = "Pawn 已成功导入。"
 --[[Translation missing --]]
 --[[ L["Enter WoWSims JSON or Pawn string"] = ""--]] 
+L["Enter WoWSims JSON or Pawn string"] = "输入 WoWSims JSON 或 Pawn 字符串"
 L["Exactly"] = "确切地"
 L["Expertise hard cap"] = "精准硬上限"
 L["Expertise soft cap"] = "精准软上限"
@@ -51,15 +54,20 @@ L["Open window when reforging"] = "重铸时打开窗口"
 L["Other/No flask"] = "其他/无合剂"
 L["Other/No food"] = "其他/无食物"
 L["Presets"] = "预设"
+L["Click to load preset"] = "点击以加载预设"
+L["Shift+Click to delete"] = "Shift+点击删除"
+L["Delete preset '%s'?"] = "删除预设“%s”？"
 L["Reforging window must be open"] = "必须打开重铸窗口"
 L["Remove cap"] = "移除上限"
 L["Result"] = "成果"
 L["Score"] = "得分"
+L["Show help buttons"] = "显示界面帮助按钮"
 L["Speed/Accuracy"] = "速度/准确度"
 L["Extra Fast"] = "极速（最低准确度）"
 L["Fast"] = "快速（准确度降低）"
 L["Normal"] = "正常（最高准确度）"
 L["Show reforged stats in item tooltips"] = "在鼠标提示中显示重铸后的属性"
+L["Show import button"] = "显示导入按钮"
 L["Slide to the left if the calculation slows your game too much."] = "如果计算导致你的游戏速度太慢，请向左滑动。"
 --[[Translation missing --]]
 --[[ L["Source stat color"] = ""--]] 
@@ -69,12 +77,13 @@ L["Spell hit cap"] = "法术命中上限"
 L["Spirit to hit"] = "精神转命中"
 L["Stat Weights"] = "属性权重"
 L["Sum"] = "总计"
+L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."
 --[[Translation missing --]]
---[[ L["Summarize reforged stats"] = ""--]] 
+--[[ L["Summarize reforged stats"] = ""--]]
 L["Tanking model"] = "坦克模式"
 --[[Translation missing --]]
 --[[ L["ticks"] = ""--]] 
 L["Weight after cap"] = "超过上限后权重"
 --[[Translation missing --]]
---[[ L["Window Settings"] = ""--]] 
+L["Window Settings"] = "窗口设置" 
 

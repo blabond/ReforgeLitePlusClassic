@@ -7,7 +7,8 @@ L["^+(%d+) %s$"] = "^%s %+(%d+)$"
 L["Active window color"] = "활성화된 창 색상"
 L["Add cap"] = "조건 추가"
 --[[Translation missing --]]
---[[ L["Apply %s Output"] = ""--]] 
+--[[ L["Apply %s Output"] = ""--]]
+L["Reforge Result Title"] = "재연마 결과"
 L["At least"] = "최소"
 L["At most"] = "최대"
 --[[Translation missing --]]
@@ -27,8 +28,10 @@ L["Crit block"] = "결정적 방어"
 L["Enter pawn string"] = "Pawn 문자열을 입력하세요"
 L["Enter the preset name"] = "프리셋 이름을 입력하세요"
 L["Enter WoWSims JSON"] = "WoWSims JSON을 입력하세요"
+L["Pawn successfully imported."] = "Pawn이 성공적으로 가져와졌습니다."
 --[[Translation missing --]]
 --[[ L["Enter WoWSims JSON or Pawn string"] = ""--]] 
+L["Enter WoWSims JSON or Pawn string"] = "WoWSims JSON 또는 Pawn 문자열을 입력하세요"
 L["Exactly"] = "정확히"
 L["Expertise hard cap"] = "숙련 하드 캡"
 L["Expertise soft cap"] = "숙련 소프트 캡"
@@ -53,15 +56,20 @@ L["Open window when reforging"] = "재연마 시 창 열기"
 --[[Translation missing --]]
 --[[ L["Other/No food"] = ""--]] 
 L["Presets"] = "프리셋"
+L["Click to load preset"] = "프리셋을 불러오려면 클릭하세요"
+L["Shift+Click to delete"] = "Shift+클릭으로 삭제"
+L["Delete preset '%s'?"] = "프리셋 '%s'을(를) 삭제하시겠습니까?"
 L["Reforging window must be open"] = "재연마 창이 열려 있어야 합니다"
 L["Remove cap"] = "조건 삭제"
 L["Result"] = "결과"
 L["Score"] = "점수"
+L["Show help buttons"] = "UI 도움말 버튼 표시"
 L["Speed/Accuracy"] = "속도/정확도"
 L["Extra Fast"] = "매우 빠름(정확도 가장 낮음)"
 L["Fast"] = "빠름(정확도 감소)"
 L["Normal"] = "보통(정확도 최고)"
 L["Show reforged stats in item tooltips"] = "아이템 툴팁에 재연마된 능력치 표시"
+L["Show import button"] = "가져오기 버튼 표시"
 L["Slide to the left if the calculation slows your game too much."] = "계산으로 인해 게임 속도가 너무 느려지면 왼쪽으로 밉니다."
 --[[Translation missing --]]
 --[[ L["Source stat color"] = ""--]] 
@@ -71,12 +79,13 @@ L["Spell hit cap"] = "주문 만적중"
 L["Spirit to hit"] = "정신력으로 인한 적중도"
 L["Stat Weights"] = "스탯 가중치"
 L["Sum"] = "합계"
+L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."
 --[[Translation missing --]]
---[[ L["Summarize reforged stats"] = ""--]] 
+--[[ L["Summarize reforged stats"] = ""--]]
 L["Tanking model"] = "탱킹 모델"
 --[[Translation missing --]]
 --[[ L["ticks"] = ""--]] 
 L["Weight after cap"] = "조건 값 이후 가중치"
 --[[Translation missing --]]
---[[ L["Window Settings"] = ""--]] 
+L["Window Settings"] = "창 설정" 
 

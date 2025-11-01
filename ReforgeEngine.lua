@@ -2,11 +2,12 @@ local addonName, addonTable = ...
 local REFORGE_COEFF = addonTable.REFORGE_COEFF
 
 local abs = math.abs
+local ceil = math.ceil
 local max = math.max
 
 local AT_LEAST_UNDER_TOLERANCE = 1
-local EXACT_UNDER_TOLERANCE = 1
-local EXACT_OVER_TOLERANCE = 15
+local EXACT_UNDER_TOLERANCE = 0
+local EXACT_OVER_TOLERANCE_RATE = 0.0015
 local ReforgeLite = addonTable.ReforgeLite
 local L = addonTable.L
 local DeepCopy = addonTable.DeepCopy
@@ -90,6 +91,15 @@ local function IsWithinAtLeastTolerance(value, targetValue)
   return value >= (targetValue - AT_LEAST_UNDER_TOLERANCE)
 end
 
+local function GetExactOverTolerance(targetValue)
+  targetValue = targetValue or 0
+  if targetValue <= 0 then
+    return 0
+  end
+
+  return ceil(targetValue * EXACT_OVER_TOLERANCE_RATE)
+end
+
 local function CalculateAtLeastPenalty(deficit, baseWeight)
   if deficit <= 0 then
     return 0
@@ -115,8 +125,9 @@ local function GetCapMismatchPenalty(cap, value, weights)
       else
         local diff = value - targetValue
         if diff > 0 then
-          if diff > EXACT_OVER_TOLERANCE then
-            penalty = penalty + (diff - EXACT_OVER_TOLERANCE) * baseWeight * 50
+          local overTolerance = GetExactOverTolerance(targetValue)
+          if diff > overTolerance then
+            penalty = penalty + (diff - overTolerance) * baseWeight * 50
           end
           penalty = penalty + diff * baseWeight * 50
         else
@@ -430,7 +441,7 @@ function ReforgeLite:CapAllows (cap, value)
         end
       else
         local lowerBound = (v.value - EXACT_UNDER_TOLERANCE) - 0.5
-        local upperBound = (v.value + EXACT_OVER_TOLERANCE) + 0.5
+        local upperBound = (v.value + GetExactOverTolerance(v.value)) + 0.5
         if value > upperBound then
           return false
         end

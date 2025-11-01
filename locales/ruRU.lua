@@ -7,7 +7,8 @@ L["^+(%d+) %s$"] = "^+(%d+) %s$"
 L["Active window color"] = "Цвет активного окна"
 L["Add cap"] = "Добавить пороговое значение"
 --[[Translation missing --]]
---[[ L["Apply %s Output"] = ""--]] 
+--[[ L["Apply %s Output"] = ""--]]
+L["Reforge Result Title"] = "Результат перековки"
 L["At least"] = "Не ниже"
 L["At most"] = "Не выше"
 --[[Translation missing --]]
@@ -27,8 +28,10 @@ L["Crit block"] = "Крит блок"
 L["Enter pawn string"] = "Введите строку Pawn"
 L["Enter the preset name"] = "Введите имя шаблона"
 L["Enter WoWSims JSON"] = "Введите WoWSims JSON"
+L["Pawn successfully imported."] = "Pawn успешно импортирован."
 --[[Translation missing --]]
 --[[ L["Enter WoWSims JSON or Pawn string"] = ""--]] 
+L["Enter WoWSims JSON or Pawn string"] = "Введите WoWSims JSON или строку Pawn"
 L["Exactly"] = "Точно"
 L["Expertise hard cap"] = "Мастерство (парирование)"
 L["Expertise soft cap"] = "Мастерство (уклонение)"
@@ -51,15 +54,20 @@ L["Open window when reforging"] = "Открыть окно при переков
 L["Other/No flask"] = "Другое/нет настоя"
 L["Other/No food"] = "Другое/нет еды"
 L["Presets"] = "Шаблоны"
+L["Click to load preset"] = "Нажмите, чтобы загрузить шаблон"
+L["Shift+Click to delete"] = "Shift+Щёлкните, чтобы удалить"
+L["Delete preset '%s'?"] = "Удалить шаблон «%s»?"
 L["Reforging window must be open"] = "Необходимо открыть окно перековки"
 L["Remove cap"] = "Удалить пороговое значение"
 L["Result"] = "Результат"
 L["Score"] = "Вес"
+L["Show help buttons"] = "Показывать кнопки справки интерфейса"
 L["Speed/Accuracy"] = "Скорость/Точность"
 L["Extra Fast"] = "Очень быстро (минимальная точность)"
 L["Fast"] = "Быстро (пониженная точность)"
 L["Normal"] = "Нормально (максимальная точность)"
 L["Show reforged stats in item tooltips"] = "Показывать перекованные статы в подсказках"
+L["Show import button"] = "Показывать кнопку импорта"
 L["Slide to the left if the calculation slows your game too much."] = "Сдвиньте влево, если расчет слишком сильно замедляет вашу игру."
 --[[Translation missing --]]
 --[[ L["Source stat color"] = ""--]] 
@@ -69,12 +77,13 @@ L["Spell hit cap"] = "Заклинания - меткость"
 L["Spirit to hit"] = "Дух в меткость"
 L["Stat Weights"] = "Веса"
 L["Sum"] = "Сум"
+L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."
 --[[Translation missing --]]
---[[ L["Summarize reforged stats"] = ""--]] 
+--[[ L["Summarize reforged stats"] = ""--]]
 L["Tanking model"] = "Режим танка"
 --[[Translation missing --]]
 --[[ L["ticks"] = ""--]] 
 L["Weight after cap"] = "Вес после порога"
 --[[Translation missing --]]
---[[ L["Window Settings"] = ""--]] 
+L["Window Settings"] = "Настройки окна" 
 

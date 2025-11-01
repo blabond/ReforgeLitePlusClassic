@@ -1,118 +1,79 @@
 local _, addonTable = ...
 local L = addonTable.L
 
---[[Translation missing --]]
---[[ L["%s does not match your currently equipped %s. ReforgeLite only supports equipped items."] = ""--]] 
---[[Translation missing --]]
---[[ L["^+(%d+) %s$"] = ""--]] 
---[[Translation missing --]]
---[[ L["Active window color"] = ""--]] 
---[[Translation missing --]]
---[[ L["Add cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Apply %s Output"] = ""--]] 
---[[Translation missing --]]
---[[ L["At least"] = ""--]] 
---[[Translation missing --]]
---[[ L["At most"] = ""--]] 
---[[Translation missing --]]
---[[ L["Bearweave"] = ""--]] 
---[[Translation missing --]]
---[[ L["Best Result"] = ""--]] 
---[[Translation missing --]]
---[[ L["Buffs"] = ""--]] 
---[[Translation missing --]]
---[[ L["Cap value"] = ""--]] 
---[[Translation missing --]]
---[[ L["Click an item to lock it"] = ""--]] 
---[[Translation missing --]]
---[[ L["Compute"] = ""--]] 
---[[Translation missing --]]
---[[ L["Crit block"] = ""--]] 
---[[Translation missing --]]
---[[ L["Debug"] = ""--]] 
---[[Translation missing --]]
---[[ L["Destination stat color"] = ""--]] 
---[[Translation missing --]]
---[[ L["Enable spec profiles"] = ""--]] 
---[[Translation missing --]]
---[[ L["Enter pawn string"] = ""--]] 
---[[Translation missing --]]
---[[ L["Enter the preset name"] = ""--]] 
---[[Translation missing --]]
---[[ L["Enter WoWSims JSON"] = ""--]] 
---[[Translation missing --]]
---[[ L["Enter WoWSims JSON or Pawn string"] = ""--]] 
---[[Translation missing --]]
---[[ L["Exactly"] = ""--]] 
---[[Translation missing --]]
---[[ L["Expertise hard cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Expertise soft cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Export"] = ""--]] 
---[[Translation missing --]]
---[[ L["Highlight reforged stats"] = ""--]] 
---[[Translation missing --]]
---[[ L["Import"] = ""--]] 
---[[Translation missing --]]
---[[ L["Import WoWSims/Pawn"] = ""--]] 
---[[Translation missing --]]
---[[ L["Inactive window color"] = ""--]] 
---[[Translation missing --]]
---[[ L["Masterfrost"] = ""--]] 
---[[Translation missing --]]
---[[ L["Melee DW hit cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Melee hit cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Monocat"] = ""--]] 
---[[Translation missing --]]
---[[ L["No reforge"] = ""--]] 
---[[Translation missing --]]
---[[ L["Open window when reforging"] = ""--]] 
---[[Translation missing --]]
---[[ L["Other/No flask"] = ""--]] 
---[[Translation missing --]]
---[[ L["Other/No food"] = ""--]] 
---[[Translation missing --]]
---[[ L["Presets"] = ""--]] 
---[[Translation missing --]]
---[[ L["Reforging window must be open"] = ""--]] 
---[[Translation missing --]]
---[[ L["Remove cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Result"] = ""--]] 
---[[Translation missing --]]
---[[ L["Score"] = ""--]]
+L["%s does not match your currently equipped %s. ReforgeLite only supports equipped items."] = "%s não corresponde ao seu %s atualmente equipado. O ReforgeLite só dá suporte a itens equipados."
+L["%s does not match your currently equipped %s: %s. ReforgeLite only supports equipped items."] = "%s não corresponde ao seu %s atualmente equipado: %s. O ReforgeLite só dá suporte a itens equipados."
+L["^+(%d+) %s$"] = "^+(%d+) %s$"
+L["Active window color"] = "Cor da janela ativa"
+L["Add cap"] = "Adicionar limite"
+L["Apply %s Output"] = "Aplicar resultado %s"
+L["Reforge Result Title"] = "Resultado de Reforja"
+L["At least"] = "Pelo menos"
+L["At most"] = "No máximo"
+L["Bearweave"] = "Bearweave"
+L["Best Result"] = "Melhor resultado"
+L["Alt %d"] = "Alt %d"
+L["Alternative %d"] = "Alternativa %d"
+L["Alternative results to display"] = "Resultados alternativos para exibir"
+L["All caps satisfied"] = "Todos os limites atendidos"
+L["Caps not met"] = "Limites não alcançados"
+L["Buffs"] = "Bônus"
+L["Cap value"] = "Valor do limite"
+L["Click an item to lock it"] = "Clique em um item para bloqueá-lo"
+L["Compute"] = "Calcular"
+L["Crit block"] = "Bloqueio crítico"
+L["Debug"] = "Depuração"
+L["Destination stat color"] = "Cor do atributo de destino"
+L["Enable spec profiles"] = "Ativar perfis de especialização"
+L["Enter pawn string"] = "Digite a string Pawn"
+L["Enter the preset name"] = "Digite o nome da configuração"
+L["Enter WoWSims JSON"] = "Insira o JSON do WoWSims"
+L["Enter WoWSims JSON or Pawn string"] = "Insira o JSON do WoWSims ou a string Pawn"
+L["Enter a number between %d and %d."] = "Digite um número entre %d e %d."
+L["Exactly"] = "Exatamente"
+L["Expertise hard cap"] = "Limite máximo de Perícia"
+L["Expertise soft cap"] = "Limite mínimo de Perícia"
+L["Export"] = "Exportar"
+L["Highlight reforged stats"] = "Destacar atributos reforjados"
+L["Import"] = "Importar"
+L["Import WoWSims/Pawn/QE"] = "Importar WoWSims/Pawn/QE"
+L["Inactive window color"] = "Cor da janela inativa"
+L["Masterfrost"] = "Masterfrost"
+L["Melee DW hit cap"] = "Limite de acerto corpo a corpo (duas armas)"
+L["Melee hit cap"] = "Limite de acerto corpo a corpo"
+L["Monocat"] = "Monocat"
+L["No reforge"] = "Sem reforja"
+L["Open window when reforging"] = "Abrir janela ao reforjar"
+L["Other/No flask"] = "Outro/Sem frasco"
+L["Other/No food"] = "Outro/Sem comida"
+L["Presets"] = "Predefinições"
+L["Click to load preset"] = "Clique para carregar o preset"
+L["Shift+Click to delete"] = "Shift+Clique para excluir"
+L["Delete preset '%s'?"] = "Excluir a predefinição '%s'?"
+L["Reforging window must be open"] = "A janela de reforja deve estar aberta"
+L["Remove cap"] = "Remover limite"
+L["Result"] = "Resultado"
+L["Score"] = "Pontuação"
+L["Show reforged stats in item tooltips"] = "Mostrar atributos reforjados nas dicas de itens"
+L["Show import button"] = "Mostrar botão de importação"
+L["Show help buttons"] = "Mostrar botões de ajuda da interface do usuário"
+L["Slide to the left if the calculation slows your game too much."] = "Deslize para a esquerda se o cálculo deixar o jogo muito lento."
 L["Speed/Accuracy"] = "Velocidade/Precisão"
 L["Extra Fast"] = "Muito rápida (menor precisão)"
 L["Fast"] = "Rápida (precisão reduzida)"
 L["Normal"] = "Normal (maior precisão)"
---[[Translation missing --]]
---[[ L["Show reforged stats in item tooltips"] = ""--]]
---[[Translation missing --]]
---[[ L["Slide to the left if the calculation slows your game too much."] = ""--]] 
---[[Translation missing --]]
---[[ L["Source stat color"] = ""--]] 
---[[Translation missing --]]
---[[ L["Spell Haste"] = ""--]] 
---[[Translation missing --]]
---[[ L["Spell hit cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Spirit to hit"] = ""--]] 
---[[Translation missing --]]
---[[ L["Stat Weights"] = ""--]] 
---[[Translation missing --]]
---[[ L["Sum"] = ""--]] 
---[[Translation missing --]]
---[[ L["Summarize reforged stats"] = ""--]] 
---[[Translation missing --]]
---[[ L["Tanking model"] = ""--]] 
---[[Translation missing --]]
---[[ L["ticks"] = ""--]] 
---[[Translation missing --]]
---[[ L["Weight after cap"] = ""--]] 
---[[Translation missing --]]
---[[ L["Window Settings"] = ""--]] 
+L["Source stat color"] = "Cor do atributo de origem"
+L["Pawn successfully imported."] = "Pawn importado com sucesso."
+L["Spell Haste"] = "Aceleração de feitiços"
+L["This import is missing player equipment data! Please make sure \"Gear\" is selected when exporting from WoWSims."] = "Esta importação não contém os dados do equipamento do jogador! Certifique-se de que \"Gear\" esteja selecionado ao exportar do WoWSims."
+L["Spell hit cap"] = "Limite de acerto com feitiços"
+L["Spirit to hit"] = "Espírito convertido em acerto"
+L["Stat Weights"] = "Pesos de atributos"
+L["Sum"] = "Soma"
+L["Summarize reforged stats"] = "Resumir atributos reforjados"
+L["Tanking model"] = "Modelo de tanque"
+L["ticks"] = "tiques"
+L["Weight after cap"] = "Peso após o limite"
+L["Window Settings"] = "Configurações da janela"
 
+L["Your Expertise rating is being converted to spell hit.\n\nIn Mists of Pandaria, casters benefit from Expertise due to it automatically converting to Hit at a 1:1 ratio.\n\nThe Hit value shown above includes this converted Expertise rating.\n\nNote: The character sheet is bugged and doesn't show Expertise converted to spell hit, but the conversion works correctly in combat."] = "Sua Taxa de Perícia está sendo convertida em Acerto com feitiços.\n\nEm Mists of Pandaria, conjuradores se beneficiam de Perícia porque ela é automaticamente convertida em Acerto na proporção de 1:1.\n\nO valor de Acerto mostrado acima inclui essa Perícia convertida.\n\nObservação: A janela do personagem está com bug e não mostra a Perícia convertida em Acerto com feitiços, mas a conversão funciona corretamente em combate."
