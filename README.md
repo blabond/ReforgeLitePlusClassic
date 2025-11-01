@@ -3,6 +3,8 @@
 Continued from: [ReforgeLite Classic](https://www.curseforge.com/wow/addons/reforgelite-classic)  
 Forked off ReforgeLite Classic, maintained by **Brues1**.  
 Please support him and the dedicated work to maintain the main version of the addon.
+ 
+Includes export functionality based on [WoWSimsExporter](https://www.curseforge.com/wow/addons/wowsimsexporter) by Natop
 
 ---
 
@@ -28,10 +30,16 @@ ReforgeLite Plus is a lightweight reforging calculator that helps you figure out
 ---
 
 ## Links
-- Original Addon: [ReforgeLite Classic by Brues1](https://www.curseforge.com/wow/addons/reforgelite-classic)  
+- [ReforgeLite Classic by Brues1](https://www.curseforge.com/wow/addons/reforgelite-classic)
+- [WoWSimsExporter](https://www.curseforge.com/wow/addons/wowsimsexporter)
 
 ---
 
 ## Credits
-All credits for the original work go to **Brues1** and contributors.  
-This clone just adds small improvements for MoP Classic users.
+- Original: ReforgeLite Classic by Brues1 and contributors
+- Export logic inspiration: WoWSimsExporter by Natop
+
+This is a fork. All original work belongs to the respective authors.
+Additional integration and MoP improvements by MrBond
+
+License: MIT. Original MIT notices preserved.
