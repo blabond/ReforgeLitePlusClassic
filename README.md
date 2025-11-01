@@ -30,7 +30,7 @@ ReforgeLite Plus is a lightweight reforging calculator that helps you figure out
 ---
 
 ## Links
-- [ReforgeLite Classic by Brues1](https://www.curseforge.com/wow/addons/reforgelite-classic)
+- [ReforgeLite Classic](https://www.curseforge.com/wow/addons/reforgelite-classic)
 - [WoWSimsExporter](https://www.curseforge.com/wow/addons/wowsimsexporter)
 
 ---
