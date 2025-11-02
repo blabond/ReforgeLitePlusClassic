@@ -39,6 +39,11 @@ ReforgeLite Plus is a lightweight reforging calculator that helps you figure out
 - Original: ReforgeLite Classic by Brues1 and contributors
 - Export logic inspiration: WoWSimsExporter by Natop
 
+This is a fork. All original work belongs to the respective authors.
+Additional integration and MoP improvements by MrBond
+
+License: MIT.
+
 ## INFO
 This project is based on the last publicly available MIT-licensed version of “ReforgeLite”.
 The original author has since changed the license to All Rights Reserved (ARR).
@@ -47,7 +52,4 @@ I fully respect this decision and do not use any code from the ARR versions.
 Due to the license change of the original project, this fork will no longer be developed to avoid future conflicts.
 Existing code remains available under the original MIT license.
 
-This is a fork. All original work belongs to the respective authors.
-Additional integration and MoP improvements by MrBond
 
-License: MIT. Original MIT notices preserved.
