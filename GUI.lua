@@ -56,6 +56,18 @@ function GUI:ClearFocus()
   self:ClearEditFocus()
 end
 
+local function ApplyFontColor(target)
+  if not target or not target.SetTextColor then
+    return
+  end
+
+  if addonTable.FONTS and addonTable.FONTS.white then
+    target:SetTextColor(addonTable.FONTS.white:GetRGB())
+  else
+    target:SetTextColor(1, 1, 1)
+  end
+end
+
 local function DropdownIsEnabled(dropdown)
   if not dropdown then
     return false
@@ -71,49 +83,64 @@ local function DropdownIsEnabled(dropdown)
   return dropdown.isDisabled == nil or dropdown.isDisabled == false
 end
 
+local function ToggleMethod(frame, enabled, enableName, disableName, useBooleanArg)
+  if not frame then
+    return
+  end
+
+  if enabled then
+    local method = enableName and frame[enableName]
+    if method then
+      if useBooleanArg then
+        method(frame, true)
+      else
+        method(frame)
+      end
+    end
+    return
+  end
+
+  local methodName = disableName or enableName
+  local method = methodName and frame[methodName]
+  if method then
+    if useBooleanArg then
+      method(frame, false)
+    else
+      method(frame)
+    end
+  end
+end
+
 function GUI:SetDropdownEnabled(dropdown, enabled)
   if not dropdown then
     return
   end
 
-  if dropdown.SetEnabled then
-    dropdown:SetEnabled(enabled)
-  end
-
-  if enabled then
-    if dropdown.EnableDropdown then
-      dropdown:EnableDropdown()
-    end
-    if dropdown.Enable then
-      dropdown:Enable()
-    end
-  else
-    if dropdown.DisableDropdown then
-      dropdown:DisableDropdown()
-    end
-    if dropdown.Disable then
-      dropdown:Disable()
-    end
-  end
+  ToggleMethod(dropdown, enabled, "SetEnabled", "SetEnabled", true)
+  ToggleMethod(dropdown, enabled, "EnableDropdown", "DisableDropdown")
+  ToggleMethod(dropdown, enabled, "Enable", "Disable")
 
   local button = dropdown.Button
   if button then
-    if enabled then
-      if button.Enable then
-        button:Enable()
-      elseif button.SetEnabled then
-        button:SetEnabled(true)
-      end
+    if button.SetEnabled then
+      ToggleMethod(button, enabled, "SetEnabled", "SetEnabled", true)
     else
-      if button.Disable then
-        button:Disable()
-      elseif button.SetEnabled then
-        button:SetEnabled(false)
-      end
+      ToggleMethod(button, enabled, "Enable", "Disable")
     end
   end
 
   dropdown.isDisabled = not enabled
+end
+
+local function ForEachDropdown(self, handler)
+  for _, dropdown in pairs(self.dropdowns) do
+    handler(dropdown, false)
+  end
+  if self.filterDropdowns then
+    for _, dropdown in pairs(self.filterDropdowns) do
+      handler(dropdown, true)
+    end
+  end
 end
 
 function GUI:Lock()
@@ -136,18 +163,12 @@ function GUI:Lock()
       end
     end
   end
-  for _, dropdown in pairs(self.dropdowns) do
-    if DropdownIsEnabled(dropdown) then
+  ForEachDropdown(self, function(dropdown, isFilter)
+    if DropdownIsEnabled(dropdown) and (not isFilter or not dropdown.preventLock) then
       self:SetDropdownEnabled(dropdown, false)
       dropdown.locked = true
     end
-  end
-  for _, dropdown in pairs(self.filterDropdowns or {}) do
-    if DropdownIsEnabled(dropdown) and not dropdown.preventLock then
-      self:SetDropdownEnabled(dropdown, false)
-      dropdown.locked = true
-    end
-  end
+  end)
 end
 
 function GUI:Unlock()
@@ -170,18 +191,12 @@ function GUI:Unlock()
       end
     end
   end
-  for _, dropdown in pairs(self.dropdowns) do
+  ForEachDropdown(self, function(dropdown)
     if dropdown.locked then
       self:SetDropdownEnabled(dropdown, true)
       dropdown.locked = nil
     end
-  end
-  for _, dropdown in pairs(self.filterDropdowns or {}) do
-    if dropdown.locked then
-      self:SetDropdownEnabled(dropdown, true)
-      dropdown.locked = nil
-    end
-  end
+  end)
 end
 
 function GUI:SetTooltip (widget, tip)
@@ -222,11 +237,7 @@ function GUI:CreateEditBox (parent, width, height, default, setter, opts)
     box = tremove (self.unusedEditBoxes)
     box:SetParent (parent)
     box:Show ()
-    if addonTable.FONTS and addonTable.FONTS.white then
-      box:SetTextColor(addonTable.FONTS.white:GetRGB())
-    else
-      box:SetTextColor (1, 1, 1)
-    end
+    ApplyFontColor(box)
     box:EnableMouse (true)
     self.editBoxes[box:GetName()] = box
   else
@@ -234,11 +245,7 @@ function GUI:CreateEditBox (parent, width, height, default, setter, opts)
     self.editBoxes[box:GetName()] = box
     box:SetAutoFocus (false)
     box:SetFontObject (ChatFontNormal)
-    if addonTable.FONTS and addonTable.FONTS.white then
-      box:SetTextColor(addonTable.FONTS.white:GetRGB())
-    else
-      box:SetTextColor (1, 1, 1)
-    end
+    ApplyFontColor(box)
     box:SetNumeric ()
     box:SetTextInsets (0, 0, 3, 3)
     box:SetMaxLetters (8)
@@ -287,31 +294,40 @@ GUI.unusedDropdowns = {}
 GUI.filterDropdowns = {}
 GUI.unusedFilterDropdowns = {}
 
-function GUI:CreateFilterDropdown (parent, text, options)
-  options = options or {}
+local function AcquireDropdownFrame(self, parent, cache, unused, template)
   local dropdown
-  if #self.unusedFilterDropdowns > 0 then
-    dropdown = tremove(self.unusedFilterDropdowns)
+  if #unused > 0 then
+    dropdown = tremove(unused)
     dropdown:SetParent(parent)
     dropdown:Show()
-    dropdown:SetEnabled(true)
-    if dropdown.originalResizeToTextPadding then
-      dropdown.resizeToTextPadding = dropdown.originalResizeToTextPadding
-      dropdown.originalResizeToTextPadding = nil
-    end
-    self.filterDropdowns[dropdown:GetName()] = dropdown
-  else
-    local name = self:GenerateWidgetName()
-    dropdown = CreateFrame("DropdownButton", name, parent, "WowStyle1FilterDropdownTemplate")
-    self.filterDropdowns[name] = dropdown
-    dropdown.originalResizeToTextPadding = dropdown.resizeToTextPadding
+    cache[dropdown:GetName()] = dropdown
+    return dropdown, false
+  end
 
+  dropdown = CreateFrame("DropdownButton", self:GenerateWidgetName(), parent, template)
+  cache[dropdown:GetName()] = dropdown
+  dropdown:Show()
+  return dropdown, true
+end
+
+function GUI:CreateFilterDropdown (parent, text, options)
+  options = options or {}
+  local dropdown, isNew = AcquireDropdownFrame(self, parent, self.filterDropdowns, self.unusedFilterDropdowns, "WowStyle1FilterDropdownTemplate")
+
+  if isNew then
+    dropdown.originalResizeToTextPadding = dropdown.resizeToTextPadding
     dropdown.Recycle = function(frame)
       frame:Hide()
       frame.originalResizeToTextPadding = frame.resizeToTextPadding
       frame.resizeToTextPadding = nil
       self.filterDropdowns[frame:GetName()] = nil
       tinsert(self.unusedFilterDropdowns, frame)
+    end
+  else
+    dropdown:SetEnabled(true)
+    if dropdown.originalResizeToTextPadding then
+      dropdown.resizeToTextPadding = dropdown.originalResizeToTextPadding
+      dropdown.originalResizeToTextPadding = nil
     end
   end
 
@@ -325,26 +341,14 @@ end
 
 function GUI:CreateDropdown (parent, values, options)
   options = options or {}
-  local sel
-  if #self.unusedDropdowns > 0 then
-    sel = tremove(self.unusedDropdowns)
-    sel:SetParent(parent)
-    sel:Show()
-    self:SetDropdownEnabled(sel, true)
-    self.dropdowns[sel:GetName()] = sel
-  else
-    sel = CreateFrame("DropdownButton", self:GenerateWidgetName(), parent, "WowStyle1DropdownTemplate")
-    self.dropdowns[sel:GetName()] = sel
+  local sel, isNew = AcquireDropdownFrame(self, parent, self.dropdowns, self.unusedDropdowns, "WowStyle1DropdownTemplate")
 
+  if isNew then
     if sel.Text then
       sel.Text:ClearAllPoints()
       sel.Text:SetPoint("RIGHT", sel.Arrow, "LEFT")
       sel.Text:SetPoint("LEFT", sel, "LEFT", 9, 0)
-      if addonTable.FONTS and addonTable.FONTS.white then
-        sel.Text:SetTextColor(addonTable.FONTS.white:GetRGB())
-      else
-        sel.Text:SetTextColor(1, 1, 1)
-      end
+      ApplyFontColor(sel.Text)
     end
 
     sel.GetValues = function(frame)

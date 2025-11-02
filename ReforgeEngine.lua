@@ -101,9 +101,7 @@ local function GetExactOverTolerance(targetValue)
 end
 
 local function CalculateAtLeastPenalty(deficit, baseWeight)
-  if deficit <= 0 then
-    return 0
-  elseif deficit <= AT_LEAST_UNDER_TOLERANCE then
+  if deficit <= AT_LEAST_UNDER_TOLERANCE then
     return 0
   end
 
@@ -183,8 +181,6 @@ local function RunReforge(self, overrides)
   self.__chooseLoops = nil
 
   local scores, codes = self:ComputeReforgeCore(data, reforgeOptions)
-
-  self.__chooseLoops = nil
 
   local alternatives = self:ChooseReforgeClassic(data, reforgeOptions, scores, codes)
   scores, codes = nil, nil
