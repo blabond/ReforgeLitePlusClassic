@@ -40,7 +40,7 @@ ReforgeLite Plus is a lightweight reforging calculator that helps you figure out
 - Export logic inspiration: WoWSimsExporter by Natop
 
 This is a fork. All original work belongs to the respective authors.
-Additional integration and MoP improvements by MrBond
+Additional integration and MoP improvements by blabond
 
 License: MIT.
 
