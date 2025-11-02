@@ -2156,7 +2156,19 @@ function ReforgeLite:AddCapPoint (i, loading)
   local point = (loading or #self.pdb.caps[i].points + 1)
   self.statCaps:AddRow (row)
 
-  local capPoints = self.pdb.caps[i].points
+  local function GetCapPoints()
+    local capData = self.pdb.caps[i]
+    if not capData then
+      capData = CreateDefaultCap()
+      self.pdb.caps[i] = capData
+    end
+    if not capData.points then
+      capData.points = {}
+    end
+    return capData.points
+  end
+
+  local capPoints = GetCapPoints()
   local capPointRef = loading and capPoints[loading] or nil
 
   if not loading then
@@ -2170,14 +2182,15 @@ function ReforgeLite:AddCapPoint (i, loading)
       newMethod = addonTable.StatCapMethods.Exactly
     end
 
-    tinsert (capPoints, 1, {value = 0, method = newMethod, after = 0, preset = 1})
-    capPointRef = capPoints[1]
+    local points = GetCapPoints()
+    tinsert(points, 1, {value = 0, method = newMethod, after = 0, preset = 1})
+    capPointRef = points[1]
   end
 
-  capPointRef = capPointRef or capPoints[point]
+  capPointRef = capPointRef or GetCapPoints()[point]
 
   local function ResolvePointIndex(widget)
-    local points = capPoints
+    local points = GetCapPoints()
     if not points or #points == 0 then
       return 1
     end
@@ -2237,8 +2250,9 @@ function ReforgeLite:AddCapPoint (i, loading)
     setter = function(dropdown, val)
       local methodDropdown = dropdown or method
       local targetIndex = ResolvePointIndex(methodDropdown)
-      if capPoints[targetIndex] then
-        capPoints[targetIndex].method = val
+      local points = GetCapPoints()
+      if points[targetIndex] then
+        points[targetIndex].method = val
       end
       if methodDropdown then
         methodDropdown.value = val
@@ -2264,8 +2278,9 @@ function ReforgeLite:AddCapPoint (i, loading)
     width = 60,
     setter = function (_,val)
       local targetIndex = ResolvePointIndex(preset)
-      if capPoints[targetIndex] then
-        capPoints[targetIndex].preset = val
+      local points = GetCapPoints()
+      if points[targetIndex] then
+        points[targetIndex].preset = val
         self:UpdateCapPreset (i, targetIndex)
         self:ReorderCapPoint (i, targetIndex)
         self:RefreshMethodStats ()
@@ -2281,8 +2296,9 @@ function ReforgeLite:AddCapPoint (i, loading)
   local value
   value = GUI:CreateEditBox (self.statCaps, 40, 30, (capPointRef and capPointRef.value) or 0, function (val)
     local targetIndex = ResolvePointIndex(value)
-    if capPoints[targetIndex] then
-      capPoints[targetIndex].value = val
+    local points = GetCapPoints()
+    if points[targetIndex] then
+      points[targetIndex].value = val
       self:ReorderCapPoint (i, targetIndex)
       self:RefreshMethodStats ()
     end
@@ -2293,8 +2309,9 @@ function ReforgeLite:AddCapPoint (i, loading)
   local after
   after = GUI:CreateEditBox (self.statCaps, 40, 30, (capPointRef and capPointRef.after) or 0, function (val)
     local targetIndex = ResolvePointIndex(after)
-    if capPoints[targetIndex] then
-      capPoints[targetIndex].after = val
+    local points = GetCapPoints()
+    if points[targetIndex] then
+      points[targetIndex].after = val
       self:RefreshMethodStats ()
     end
   end)
@@ -2478,7 +2495,11 @@ function ReforgeLite:SetStatWeights (weights, caps)
         self.statCaps[i].stat:SetValue (self.pdb.caps[i].stat)
       end
       while #self.pdb.caps[i].points < count do
-        self:AddCapPoint (i)
+        local before = #self.pdb.caps[i].points
+        self:AddCapPoint(i)
+        if #self.pdb.caps[i].points <= before then
+          break
+        end
       end
       while #self.pdb.caps[i].points > count do
         self:RemoveCapPoint (i, 1)
